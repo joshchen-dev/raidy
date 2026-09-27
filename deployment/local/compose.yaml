@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: raidy
+      POSTGRES_USER: raidy
+      POSTGRES_PASSWORD: raidy
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raidy"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - raidy-db:/var/lib/postgresql/data
+      - ../../backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+
+volumes:
+  raidy-db:

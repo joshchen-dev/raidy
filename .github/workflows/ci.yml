@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: raidy_test
+          POSTGRES_USER: raidy
+          POSTGRES_PASSWORD: raidy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U raidy -d raidy_test"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgres://raidy:raidy@localhost:5432/raidy_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Check dependencies
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
