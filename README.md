@@ -15,9 +15,9 @@ deployment/  local PostgreSQL and future deployment manifests
 
 ## MVP behavior
 
-- `/team setup` creates an eight-person-or-smaller static roster from Discord accounts.
+- `/team setup` creates an eight-person-or-smaller static roster with a common-timezone selector and validated custom timezone fallback.
 - `/team manage` replaces that roster or deletes the team and its history.
-- `/schedule setup` configures a weekly or biweekly timetable.
+- `/schedule setup` configures a weekly or biweekly timetable through weekday, clock, publication-lead, and paginated date selectors.
 - `/schedule manage` publishes early, republishes a deleted message, pauses automation, or replaces the template.
 - Poll membership is snapshotted, so later roster edits only affect future polls.
 - Members explicitly mark available dates; omitted future dates become unavailable.

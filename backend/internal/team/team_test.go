@@ -82,13 +82,19 @@ func TestGenerateOccurrencesRejectsDSTGap(t *testing.T) {
 	}
 }
 
-func TestParseSetupTimesRejectsDSTGap(t *testing.T) {
-	if _, err := time.LoadLocation("America/New_York"); err != nil {
+func TestFirstPublicationKeepsLocalClockAcrossDST(t *testing.T) {
+	location, err := time.LoadLocation("America/New_York")
+	if err != nil {
 		t.Skip("timezone database unavailable")
 	}
-	_, _, err := ParseSetupTimes("America/New_York", "2026-03-08", "2026-03-08 02:30")
-	if err == nil || !strings.Contains(err.Error(), "does not exist") {
-		t.Fatalf("expected DST gap error, got %v", err)
+	firstRaid := time.Date(2026, 3, 9, 21, 0, 0, 0, location)
+	publish, err := FirstPublication(firstRaid, "America/New_York", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := publish.In(location)
+	if got := local.Format("2006-01-02 15:04 MST"); got != "2026-03-06 21:00 EST" {
+		t.Fatalf("publication = %s", got)
 	}
 }
 

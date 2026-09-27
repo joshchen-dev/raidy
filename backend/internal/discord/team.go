@@ -16,7 +16,6 @@ import (
 func (b *Bot) openTeamSetup(i *discordgo.Interaction) error {
 	return b.modal(i, "team_setup", "Create a static team",
 		discordgo.TextInput{CustomID: "name", Label: "Team name", Style: discordgo.TextInputShort, Required: true, MaxLength: 80},
-		discordgo.TextInput{CustomID: "timezone", Label: "IANA timezone", Style: discordgo.TextInputShort, Required: true, Value: "Asia/Tokyo", MaxLength: 80},
 	)
 }
 
@@ -25,15 +24,95 @@ func (b *Bot) submitTeamSetup(i *discordgo.Interaction, values map[string]string
 	if name == "" {
 		return errors.New("team name is required")
 	}
-	zone := strings.TrimSpace(values["timezone"])
-	if _, err := time.LoadLocation(zone); err != nil {
-		return fmt.Errorf("unknown timezone %q", zone)
-	}
-	token, err := b.Drafts.NewTeam(team.TeamDraft{GuildID: i.GuildID, UserID: userID(i), Name: name, Timezone: zone})
+	token, err := b.Drafts.NewTeam(team.TeamDraft{GuildID: i.GuildID, UserID: userID(i), Name: name, Timezone: "Asia/Tokyo"})
 	if err != nil {
 		return err
 	}
-	return b.ephemeral(i, "Select up to seven teammates. You are included automatically.", rosterComponents(token, nil))
+	return b.ephemeral(i, "Choose the team's timezone. `Asia/Tokyo` is selected by default.", timezoneComponents(token))
+}
+
+func timezoneComponents(token string) []discordgo.MessageComponent {
+	return []discordgo.MessageComponent{
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.SelectMenu{CustomID: "team_timezone:" + token, Placeholder: "Choose a timezone", MinValues: intPtr(1), MaxValues: 1, Options: timezoneOptions()},
+		}},
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{CustomID: "team_timezone_default:" + token, Label: "Use Asia/Tokyo", Style: discordgo.PrimaryButton},
+			discordgo.Button{CustomID: "team_cancel:" + token, Label: "Cancel", Style: discordgo.SecondaryButton},
+		}},
+	}
+}
+
+func timezoneOptions() []discordgo.SelectMenuOption {
+	zones := []struct{ label, value string }{
+		{"UTC", "UTC"},
+		{"Pacific Time — Los Angeles", "America/Los_Angeles"},
+		{"Mountain Time — Denver", "America/Denver"},
+		{"Central Time — Chicago", "America/Chicago"},
+		{"Eastern Time — New York", "America/New_York"},
+		{"Toronto", "America/Toronto"},
+		{"Vancouver", "America/Vancouver"},
+		{"São Paulo", "America/Sao_Paulo"},
+		{"London", "Europe/London"},
+		{"Paris", "Europe/Paris"},
+		{"Berlin", "Europe/Berlin"},
+		{"Amsterdam", "Europe/Amsterdam"},
+		{"Madrid", "Europe/Madrid"},
+		{"Rome", "Europe/Rome"},
+		{"Warsaw", "Europe/Warsaw"},
+		{"Tokyo", "Asia/Tokyo"},
+		{"Seoul", "Asia/Seoul"},
+		{"Shanghai", "Asia/Shanghai"},
+		{"Hong Kong", "Asia/Hong_Kong"},
+		{"Taipei", "Asia/Taipei"},
+		{"Singapore", "Asia/Singapore"},
+		{"Bangkok", "Asia/Bangkok"},
+		{"Sydney", "Australia/Sydney"},
+		{"Auckland", "Pacific/Auckland"},
+		{"Other timezone…", "other"},
+	}
+	options := make([]discordgo.SelectMenuOption, 0, len(zones))
+	for _, zone := range zones {
+		options = append(options, discordgo.SelectMenuOption{Label: zone.label, Value: zone.value, Default: zone.value == "Asia/Tokyo"})
+	}
+	return options
+}
+
+func (b *Bot) selectTeamTimezone(i *discordgo.Interaction, token string, values []string) error {
+	if len(values) != 1 {
+		return errors.New("choose one timezone")
+	}
+	if values[0] == "other" {
+		if _, err := b.Drafts.Team(token, i.GuildID, userID(i)); err != nil {
+			return err
+		}
+		return b.modal(i, "team_timezone_custom:"+token, "Custom timezone",
+			discordgo.TextInput{CustomID: "timezone", Label: "IANA timezone", Style: discordgo.TextInputShort, Required: true, Placeholder: "America/Phoenix", MaxLength: 80},
+		)
+	}
+	return b.saveTeamTimezone(i, token, values[0], true)
+}
+
+func (b *Bot) submitCustomTimezone(i *discordgo.Interaction, token string, values map[string]string) error {
+	return b.saveTeamTimezone(i, token, values["timezone"], false)
+}
+
+func (b *Bot) saveTeamTimezone(i *discordgo.Interaction, token, timezone string, update bool) error {
+	draft, err := b.Drafts.Team(token, i.GuildID, userID(i))
+	if err != nil {
+		return err
+	}
+	timezone = strings.TrimSpace(timezone)
+	if _, err := time.LoadLocation(timezone); err != nil {
+		return fmt.Errorf("unknown timezone %q", timezone)
+	}
+	draft.Timezone = timezone
+	b.Drafts.SaveTeam(token, draft)
+	content := "Select up to seven teammates. You are included automatically."
+	if update {
+		return b.update(i, content, rosterComponents(token, nil))
+	}
+	return b.ephemeral(i, content, rosterComponents(token, nil))
 }
 
 func (b *Bot) openTeamManage(i *discordgo.Interaction) error {

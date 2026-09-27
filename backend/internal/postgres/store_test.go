@@ -59,6 +59,10 @@ func TestSchedulingLifecycle(t *testing.T) {
 	if err := store.SaveSchedule(ctx, draft); err != nil {
 		t.Fatal(err)
 	}
+	var enabled bool
+	if err := pool.QueryRow(ctx, `SELECT enabled FROM schedule_settings WHERE team_id=$1`, created.ID).Scan(&enabled); err != nil || !enabled {
+		t.Fatalf("schedule enabled=%v err=%v", enabled, err)
+	}
 	poll, generated, err := store.PublishNext(ctx, created.ID, false, publishAt)
 	if err != nil || !generated {
 		t.Fatalf("PublishNext() generated=%v err=%v", generated, err)

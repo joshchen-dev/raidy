@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -52,6 +53,9 @@ func (b *Bot) pickScheduleTeam(i *discordgo.Interaction, token string, values []
 	draft.TeamID = value.ID
 	draft.TeamName = value.Name
 	draft.Timezone = value.Timezone
+	if err := setScheduleDefaults(&draft, now()); err != nil {
+		return err
+	}
 	b.Drafts.SaveSchedule(token, draft)
 	return b.update(i, "Choose how much time each timetable covers.", cadenceComponents(token))
 }
@@ -68,7 +72,11 @@ func (b *Bot) beginScheduleForTeam(i *discordgo.Interaction, teamID int64) error
 }
 
 func (b *Bot) startScheduleDraft(i *discordgo.Interaction, value team.Team, update bool) error {
-	token, err := b.Drafts.NewSchedule(team.ScheduleDraft{GuildID: i.GuildID, UserID: userID(i), TeamID: value.ID, TeamName: value.Name, Timezone: value.Timezone, ChannelID: i.ChannelID})
+	draft := team.ScheduleDraft{GuildID: i.GuildID, UserID: userID(i), TeamID: value.ID, TeamName: value.Name, Timezone: value.Timezone, ChannelID: i.ChannelID}
+	if err := setScheduleDefaults(&draft, now()); err != nil {
+		return err
+	}
+	token, err := b.Drafts.NewSchedule(draft)
 	if err != nil {
 		return err
 	}
@@ -77,6 +85,32 @@ func (b *Bot) startScheduleDraft(i *discordgo.Interaction, value team.Team, upda
 		return b.update(i, content, cadenceComponents(token))
 	}
 	return b.ephemeral(i, content, cadenceComponents(token))
+}
+
+func setScheduleDefaults(draft *team.ScheduleDraft, at time.Time) error {
+	today, err := localDate(draft.Timezone, at)
+	if err != nil {
+		return err
+	}
+	daysUntilMonday := (int(time.Monday) - int(today.Weekday()) + 7) % 7
+	if daysUntilMonday == 0 {
+		daysUntilMonday = 7
+	}
+	draft.StartMinutes = 21 * 60
+	draft.EndMinutes = 23 * 60
+	draft.PublishLeadDays = 3
+	draft.DatePageStart = today
+	draft.FirstPeriodStart = today.AddDate(0, 0, daysUntilMonday)
+	return nil
+}
+
+func localDate(timezone string, at time.Time) (time.Time, error) {
+	loc, err := time.LoadLocation(timezone)
+	if err != nil {
+		return time.Time{}, err
+	}
+	year, month, day := at.In(loc).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, loc), nil
 }
 
 func cadenceComponents(token string) []discordgo.MessageComponent {
@@ -117,52 +151,274 @@ func (b *Bot) pickWeekdays(i *discordgo.Interaction, token string, values []stri
 		return err
 	}
 	b.Drafts.SaveSchedule(token, draft)
-	return b.modal(i, "schedule_times:"+token, "Timetable details",
-		discordgo.TextInput{CustomID: "start", Label: "Start time (HH:MM)", Style: discordgo.TextInputShort, Required: true, Value: "21:00", MaxLength: 5},
-		discordgo.TextInput{CustomID: "end", Label: "End time (HH:MM)", Style: discordgo.TextInputShort, Required: true, Value: "23:00", MaxLength: 5},
-		discordgo.TextInput{CustomID: "period", Label: "First period start (YYYY-MM-DD)", Style: discordgo.TextInputShort, Required: true, Placeholder: "2026-10-05", MaxLength: 10},
-		discordgo.TextInput{CustomID: "publish", Label: "First publish (YYYY-MM-DD HH:MM)", Style: discordgo.TextInputShort, Required: true, Placeholder: "2026-10-02 18:00", MaxLength: 16},
-	)
+	return b.update(i, scheduleTimeContent(draft), scheduleTimeComponents(token, draft))
 }
 
-func (b *Bot) submitScheduleTimes(i *discordgo.Interaction, token string, values map[string]string) error {
+func scheduleTimeContent(draft team.ScheduleDraft) string {
+	return fmt.Sprintf("Choose the shared raid time. Current selection: **%s–%s** (`%s`).", team.FormatClock(draft.StartMinutes), team.FormatClock(draft.EndMinutes), draft.Timezone)
+}
+
+func scheduleTimeComponents(token string, draft team.ScheduleDraft) []discordgo.MessageComponent {
+	selectRow := func(customID, placeholder string, options []discordgo.SelectMenuOption) discordgo.MessageComponent {
+		return discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.SelectMenu{CustomID: customID + ":" + token, Placeholder: placeholder, MinValues: intPtr(1), MaxValues: 1, Options: options},
+		}}
+	}
+	return []discordgo.MessageComponent{
+		selectRow("schedule_start_hour", "Start hour", clockOptions(24, 1, draft.StartMinutes/60)),
+		selectRow("schedule_start_minute", "Start minute", clockOptions(60, 15, draft.StartMinutes%60)),
+		selectRow("schedule_end_hour", "End hour", clockOptions(24, 1, draft.EndMinutes/60)),
+		selectRow("schedule_end_minute", "End minute", clockOptions(60, 15, draft.EndMinutes%60)),
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{CustomID: "schedule_time_continue:" + token, Label: "Continue", Style: discordgo.PrimaryButton},
+			discordgo.Button{CustomID: "schedule_cancel:" + token, Label: "Cancel", Style: discordgo.SecondaryButton},
+		}},
+	}
+}
+
+func clockOptions(limit, step, selected int) []discordgo.SelectMenuOption {
+	options := make([]discordgo.SelectMenuOption, 0, limit/step)
+	for value := 0; value < limit; value += step {
+		label := fmt.Sprintf("%02d", value)
+		options = append(options, discordgo.SelectMenuOption{Label: label, Value: strconv.Itoa(value), Default: value == selected})
+	}
+	return options
+}
+
+func (b *Bot) pickScheduleTime(i *discordgo.Interaction, token, field string, values []string) error {
+	if len(values) != 1 {
+		return errors.New("choose one time value")
+	}
+	value, err := strconv.Atoi(values[0])
+	if err != nil {
+		return errors.New("invalid time value")
+	}
 	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
 	if err != nil {
 		return err
 	}
-	draft.StartMinutes, err = team.ParseClock(values["start"])
-	if err != nil {
-		return err
+	switch field {
+	case "schedule_start_hour":
+		if value < 0 || value > 23 {
+			return errors.New("invalid start hour")
+		}
+		draft.StartMinutes = value*60 + draft.StartMinutes%60
+	case "schedule_start_minute":
+		if value < 0 || value > 45 || value%15 != 0 {
+			return errors.New("invalid start minute")
+		}
+		draft.StartMinutes = draft.StartMinutes/60*60 + value
+	case "schedule_end_hour":
+		if value < 0 || value > 23 {
+			return errors.New("invalid end hour")
+		}
+		draft.EndMinutes = value*60 + draft.EndMinutes%60
+	case "schedule_end_minute":
+		if value < 0 || value > 45 || value%15 != 0 {
+			return errors.New("invalid end minute")
+		}
+		draft.EndMinutes = draft.EndMinutes/60*60 + value
+	default:
+		return errors.New("invalid time field")
 	}
-	draft.EndMinutes, err = team.ParseClock(values["end"])
+	b.Drafts.SaveSchedule(token, draft)
+	return b.update(i, scheduleTimeContent(draft), scheduleTimeComponents(token, draft))
+}
+
+func (b *Bot) continueScheduleTime(i *discordgo.Interaction, token string) error {
+	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
 	if err != nil {
 		return err
 	}
 	if draft.StartMinutes == draft.EndMinutes {
 		return errors.New("start and end time must differ")
 	}
-	draft.FirstPeriodStart, draft.FirstPublishAt, err = team.ParseSetupTimes(draft.Timezone, values["period"], values["publish"])
+	return b.update(i, publishLeadContent(draft), publishLeadComponents(token, draft))
+}
+
+func publishLeadContent(draft team.ScheduleDraft) string {
+	return fmt.Sprintf("Choose when voting opens. Current selection: **%d days before the first raid**.", draft.PublishLeadDays)
+}
+
+func publishLeadComponents(token string, draft team.ScheduleDraft) []discordgo.MessageComponent {
+	leadDays := []int{1, 2, 3, 5, 7, 10, 14}
+	options := make([]discordgo.SelectMenuOption, 0, len(leadDays))
+	for _, days := range leadDays {
+		options = append(options, discordgo.SelectMenuOption{Label: fmt.Sprintf("%d days before", days), Value: strconv.Itoa(days), Default: days == draft.PublishLeadDays})
+	}
+	return []discordgo.MessageComponent{
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.SelectMenu{CustomID: "schedule_lead:" + token, Placeholder: "Voting lead time", MinValues: intPtr(1), MaxValues: 1, Options: options},
+		}},
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{CustomID: "schedule_lead_continue:" + token, Label: "Continue", Style: discordgo.PrimaryButton},
+			discordgo.Button{CustomID: "schedule_cancel:" + token, Label: "Cancel", Style: discordgo.SecondaryButton},
+		}},
+	}
+}
+
+func validPublishLead(days int) bool {
+	for _, allowed := range []int{1, 2, 3, 5, 7, 10, 14} {
+		if days == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Bot) pickPublishLead(i *discordgo.Interaction, token string, values []string) error {
+	if len(values) != 1 {
+		return errors.New("choose one lead time")
+	}
+	days, err := strconv.Atoi(values[0])
+	if err != nil || !validPublishLead(days) {
+		return errors.New("invalid publication lead time")
+	}
+	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
 	if err != nil {
 		return err
+	}
+	draft.PublishLeadDays = days
+	b.Drafts.SaveSchedule(token, draft)
+	return b.update(i, publishLeadContent(draft), publishLeadComponents(token, draft))
+}
+
+func (b *Bot) openScheduleDate(i *discordgo.Interaction, token string) error {
+	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
+	if err != nil {
+		return err
+	}
+	return b.update(i, scheduleDateContent(draft), scheduleDateComponents(token, draft))
+}
+
+func scheduleDateContent(draft team.ScheduleDraft) string {
+	return "Choose the first period date. Current selection: **" + draft.FirstPeriodStart.Format("Mon, 2006-01-02") + "**."
+}
+
+func scheduleDateComponents(token string, draft team.ScheduleDraft) []discordgo.MessageComponent {
+	options := make([]discordgo.SelectMenuOption, 0, 25)
+	for day := 0; day < 25; day++ {
+		date := draft.DatePageStart.AddDate(0, 0, day)
+		options = append(options, discordgo.SelectMenuOption{
+			Label: date.Format("Mon, Jan 2, 2006"), Value: date.Format("2006-01-02"), Default: sameDate(date, draft.FirstPeriodStart),
+		})
+	}
+	return []discordgo.MessageComponent{
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.SelectMenu{CustomID: "schedule_date:" + token, Placeholder: "First period date", MinValues: intPtr(1), MaxValues: 1, Options: options},
+		}},
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{CustomID: "schedule_date_page:" + token + ":-1", Label: "Previous 25", Style: discordgo.SecondaryButton, Disabled: !draft.DatePageStart.After(localDateUnchecked(draft.Timezone, now()))},
+			discordgo.Button{CustomID: "schedule_date_page:" + token + ":1", Label: "Next 25", Style: discordgo.SecondaryButton},
+			discordgo.Button{CustomID: "schedule_date_use:" + token, Label: "Use date", Style: discordgo.PrimaryButton},
+			discordgo.Button{CustomID: "schedule_cancel:" + token, Label: "Cancel", Style: discordgo.SecondaryButton},
+		}},
+	}
+}
+
+func localDateUnchecked(timezone string, at time.Time) time.Time {
+	date, _ := localDate(timezone, at)
+	return date
+}
+
+func sameDate(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
+}
+
+func (b *Bot) pickScheduleDate(i *discordgo.Interaction, token string, values []string) error {
+	if len(values) != 1 {
+		return errors.New("choose one period date")
+	}
+	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
+	if err != nil {
+		return err
+	}
+	loc, err := time.LoadLocation(draft.Timezone)
+	if err != nil {
+		return err
+	}
+	date, err := time.ParseInLocation("2006-01-02", values[0], loc)
+	if err != nil || values[0] != date.Format("2006-01-02") {
+		return errors.New("invalid period date")
+	}
+	today, err := localDate(draft.Timezone, now())
+	if err != nil {
+		return err
+	}
+	if date.Before(today) {
+		return errors.New("period date cannot be in the past")
+	}
+	draft.FirstPeriodStart = date
+	b.Drafts.SaveSchedule(token, draft)
+	return b.update(i, scheduleDateContent(draft), scheduleDateComponents(token, draft))
+}
+
+func (b *Bot) moveScheduleDatePage(i *discordgo.Interaction, token string, direction int) error {
+	if direction != -1 && direction != 1 {
+		return errors.New("invalid date page")
+	}
+	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
+	if err != nil {
+		return err
+	}
+	today, err := localDate(draft.Timezone, now())
+	if err != nil {
+		return err
+	}
+	draft.DatePageStart = draft.DatePageStart.AddDate(0, 0, direction*25)
+	if draft.DatePageStart.Before(today) {
+		draft.DatePageStart = today
+	}
+	pageEnd := draft.DatePageStart.AddDate(0, 0, 25)
+	if draft.FirstPeriodStart.Before(draft.DatePageStart) || !draft.FirstPeriodStart.Before(pageEnd) {
+		draft.FirstPeriodStart = draft.DatePageStart
+	}
+	b.Drafts.SaveSchedule(token, draft)
+	return b.update(i, scheduleDateContent(draft), scheduleDateComponents(token, draft))
+}
+
+func (b *Bot) reviewSchedule(i *discordgo.Interaction, token string) error {
+	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
+	if err != nil {
+		return err
+	}
+	if draft.StartMinutes == draft.EndMinutes {
+		return errors.New("start and end time must differ")
+	}
+	if !validPublishLead(draft.PublishLeadDays) {
+		return errors.New("invalid publication lead time")
 	}
 	occurrences, err := team.GenerateOccurrences(team.Schedule{Timezone: draft.Timezone, CadenceDays: draft.CadenceDays, StartMinutes: draft.StartMinutes, EndMinutes: draft.EndMinutes, Weekdays: draft.Weekdays, NextPeriodStart: draft.FirstPeriodStart})
 	if err != nil {
 		return err
 	}
-	if len(occurrences) == 0 || !draft.FirstPublishAt.Before(occurrences[0].StartsAt) {
-		return errors.New("publication must be before the first raid starts")
+	if len(occurrences) == 0 {
+		return errors.New("schedule produced no occurrences")
+	}
+	draft.FirstPublishAt, err = team.FirstPublication(occurrences[0].StartsAt, draft.Timezone, draft.PublishLeadDays)
+	if err != nil {
+		return err
 	}
 	b.Drafts.SaveSchedule(token, draft)
 	var lines []string
 	for _, o := range occurrences {
 		lines = append(lines, "• <t:"+strconv.FormatInt(o.StartsAt.Unix(), 10)+":F>–<t:"+strconv.FormatInt(o.EndsAt.Unix(), 10)+":t>")
 	}
-	content := fmt.Sprintf("**%s** — %d-day timetable\nTimezone: `%s`\nChannel: <#%s>\nPublishes: <t:%d:F>\n%s", draft.TeamName, draft.CadenceDays, draft.Timezone, draft.ChannelID, draft.FirstPublishAt.Unix(), strings.Join(lines, "\n"))
+	publishText := "<t:" + strconv.FormatInt(draft.FirstPublishAt.Unix(), 10) + ":F>"
+	if !draft.FirstPublishAt.After(now()) {
+		publishText += " — **immediately after activation**"
+	}
+	content := fmt.Sprintf("**%s** — %d-day timetable\nTimezone: `%s`\nRaid time: **%s–%s**\nFirst period: **%s**\nVoting opens: **%d days before the first raid**\nChannel: <#%s>\nPublishes: %s\n%s",
+		draft.TeamName, draft.CadenceDays, draft.Timezone, team.FormatClock(draft.StartMinutes), team.FormatClock(draft.EndMinutes),
+		draft.FirstPeriodStart.Format("2006-01-02"), draft.PublishLeadDays, draft.ChannelID, publishText, strings.Join(lines, "\n"))
 	components := []discordgo.MessageComponent{discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 		discordgo.Button{CustomID: "schedule_commit:" + token, Label: "Activate", Style: discordgo.SuccessButton},
+		discordgo.Button{CustomID: "schedule_date_back:" + token, Label: "Change date", Style: discordgo.SecondaryButton},
 		discordgo.Button{CustomID: "schedule_cancel:" + token, Label: "Cancel", Style: discordgo.SecondaryButton},
 	}}}
-	return b.ephemeral(i, content, components)
+	return b.update(i, content, components)
 }
 
 func (b *Bot) commitSchedule(i *discordgo.Interaction, token string) error {

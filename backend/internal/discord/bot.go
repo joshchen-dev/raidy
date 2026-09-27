@@ -93,8 +93,8 @@ func (b *Bot) handleModal(i *discordgo.Interaction) error {
 	switch {
 	case data.CustomID == "team_setup":
 		return b.submitTeamSetup(i, modalValues(data))
-	case strings.HasPrefix(data.CustomID, "schedule_times:"):
-		return b.submitScheduleTimes(i, strings.TrimPrefix(data.CustomID, "schedule_times:"), modalValues(data))
+	case strings.HasPrefix(data.CustomID, "team_timezone_custom:"):
+		return b.submitCustomTimezone(i, strings.TrimPrefix(data.CustomID, "team_timezone_custom:"), modalValues(data))
 	default:
 		return errors.New("unknown or expired modal")
 	}
@@ -107,6 +107,10 @@ func (b *Bot) handleComponent(i *discordgo.Interaction) error {
 		return errors.New("invalid interaction")
 	}
 	switch parts[0] {
+	case "team_timezone":
+		return b.selectTeamTimezone(i, part(parts, 1), data.Values)
+	case "team_timezone_default":
+		return b.saveTeamTimezone(i, part(parts, 1), "Asia/Tokyo", true)
 	case "team_roster":
 		return b.selectTeamRoster(i, part(parts, 1), data.Values)
 	case "team_roster_empty":
@@ -128,6 +132,22 @@ func (b *Bot) handleComponent(i *discordgo.Interaction) error {
 		return b.pickCadence(i, part(parts, 1), partInt(parts, 2))
 	case "schedule_weekdays":
 		return b.pickWeekdays(i, part(parts, 1), data.Values)
+	case "schedule_start_hour", "schedule_start_minute", "schedule_end_hour", "schedule_end_minute":
+		return b.pickScheduleTime(i, part(parts, 1), parts[0], data.Values)
+	case "schedule_time_continue":
+		return b.continueScheduleTime(i, part(parts, 1))
+	case "schedule_lead":
+		return b.pickPublishLead(i, part(parts, 1), data.Values)
+	case "schedule_lead_continue":
+		return b.openScheduleDate(i, part(parts, 1))
+	case "schedule_date":
+		return b.pickScheduleDate(i, part(parts, 1), data.Values)
+	case "schedule_date_page":
+		return b.moveScheduleDatePage(i, part(parts, 1), partInt(parts, 2))
+	case "schedule_date_use":
+		return b.reviewSchedule(i, part(parts, 1))
+	case "schedule_date_back":
+		return b.openScheduleDate(i, part(parts, 1))
 	case "schedule_commit":
 		return b.commitSchedule(i, part(parts, 1))
 	case "schedule_cancel":

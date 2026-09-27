@@ -93,8 +93,10 @@ type ScheduleDraft struct {
 	Weekdays         []time.Weekday
 	StartMinutes     int
 	EndMinutes       int
+	PublishLeadDays  int
 	FirstPeriodStart time.Time
 	FirstPublishAt   time.Time
+	DatePageStart    time.Time
 	ChannelID        string
 	ExpiresAt        time.Time
 }
@@ -206,36 +208,19 @@ func DisplayName(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-func ParseClock(s string) (int, error) {
-	t, err := time.Parse("15:04", strings.TrimSpace(s))
-	if err != nil {
-		return 0, fmt.Errorf("time must use HH:MM: %w", err)
-	}
-	return t.Hour()*60 + t.Minute(), nil
-}
-
 func FormatClock(minutes int) string {
 	return fmt.Sprintf("%02d:%02d", minutes/60, minutes%60)
 }
 
-func ParseSetupTimes(timezone, periodStart, publishAt string) (time.Time, time.Time, error) {
+func FirstPublication(firstRaid time.Time, timezone string, leadDays int) (time.Time, error) {
+	if leadDays <= 0 {
+		return time.Time{}, errors.New("publication lead time must be positive")
+	}
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("unknown timezone %q", timezone)
+		return time.Time{}, err
 	}
-	period, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(periodStart), loc)
-	if err != nil {
-		return time.Time{}, time.Time{}, errors.New("period start must use YYYY-MM-DD")
-	}
-	publishInput := strings.TrimSpace(publishAt)
-	publish, err := time.ParseInLocation("2006-01-02 15:04", publishInput, loc)
-	if err != nil {
-		return time.Time{}, time.Time{}, errors.New("publication time must use YYYY-MM-DD HH:MM")
-	}
-	if publish.Format("2006-01-02 15:04") != publishInput {
-		return time.Time{}, time.Time{}, errors.New("publication time does not exist due to a clock change")
-	}
-	return period, publish, nil
+	return firstRaid.In(loc).AddDate(0, 0, -leadDays).UTC(), nil
 }
 
 func GenerateOccurrences(s Schedule) ([]Occurrence, error) {
