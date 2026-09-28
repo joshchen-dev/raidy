@@ -10,6 +10,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 
+	"github.com/joshchen-dev/raidy/internal/postgres"
 	"github.com/joshchen-dev/raidy/internal/team"
 )
 
@@ -426,6 +427,14 @@ func (b *Bot) commitSchedule(i *discordgo.Interaction, token string) error {
 	if err != nil {
 		return err
 	}
+	channel, err := b.Session.State.Channel(draft.ChannelID)
+	if err != nil {
+		channel, err = b.Session.Channel(draft.ChannelID)
+	}
+	if err != nil {
+		return err
+	}
+	draft.ChannelName = channel.Name
 	if err := b.Store.SaveSchedule(context.Background(), draft); err != nil {
 		return err
 	}
@@ -493,17 +502,28 @@ func (b *Bot) publishNow(i *discordgo.Interaction, teamID int64) error {
 	if err != nil {
 		return err
 	}
-	poll, created, err := b.Store.PublishNext(context.Background(), teamID, true, now())
+	if err := b.PublishTeam(context.Background(), teamID, userID(i)); err != nil {
+		return err
+	}
+	return b.update(i, "Published the next timetable for **"+value.Name+"**.", nil)
+}
+
+func (b *Bot) PublishTeam(ctx context.Context, teamID int64, leaderID string) error {
+	value, err := b.Store.Team(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if value.LeaderID != leaderID {
+		return postgres.ErrForbidden
+	}
+	poll, created, err := b.Store.PublishNext(ctx, teamID, true, now())
 	if err != nil {
 		return err
 	}
 	if created {
 		b.Log.Info("poll cycle advanced manually", "poll_id", poll.ID, "team_id", teamID)
 	}
-	if err := b.publishUnpublished(context.Background()); err != nil {
-		return err
-	}
-	return b.update(i, "Published the next timetable for **"+value.Name+"**.", nil)
+	return b.publishUnpublished(ctx)
 }
 
 func (b *Bot) enableSchedule(i *discordgo.Interaction, teamID int64, enabled bool) error {
@@ -514,7 +534,7 @@ func (b *Bot) enableSchedule(i *discordgo.Interaction, teamID int64, enabled boo
 	if err != nil {
 		return err
 	}
-	if err := b.Store.SetScheduleEnabled(context.Background(), teamID, userID(i), enabled); err != nil {
+	if err := b.SetTeamScheduleEnabled(context.Background(), teamID, userID(i), enabled); err != nil {
 		return err
 	}
 	state := "paused"
@@ -524,6 +544,10 @@ func (b *Bot) enableSchedule(i *discordgo.Interaction, teamID int64, enabled boo
 	return b.update(i, "Automation "+state+" for **"+value.Name+"**.", nil)
 }
 
+func (b *Bot) SetTeamScheduleEnabled(ctx context.Context, teamID int64, leaderID string, enabled bool) error {
+	return b.Store.SetScheduleEnabled(ctx, teamID, leaderID, enabled)
+}
+
 func (b *Bot) republishLatest(i *discordgo.Interaction, teamID int64) error {
 	if err := invalidID(teamID); err != nil {
 		return err
@@ -531,18 +555,29 @@ func (b *Bot) republishLatest(i *discordgo.Interaction, teamID int64) error {
 	if _, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), teamID); err != nil {
 		return err
 	}
-	view, err := b.Store.LatestPoll(context.Background(), teamID)
+	if err := b.RepublishTeam(context.Background(), teamID, userID(i)); err != nil {
+		return err
+	}
+	return b.update(i, "Latest timetable republished.", nil)
+}
+
+func (b *Bot) RepublishTeam(ctx context.Context, teamID int64, leaderID string) error {
+	value, err := b.Store.Team(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if value.LeaderID != leaderID {
+		return postgres.ErrForbidden
+	}
+	view, err := b.Store.LatestPoll(ctx, teamID)
 	if err != nil {
 		return err
 	}
 	if view.Poll.MessageID != "" {
 		_ = b.Session.ChannelMessageDelete(view.Poll.ChannelID, view.Poll.MessageID)
 	}
-	if err := b.Store.ClearPollMessage(context.Background(), view.Poll.ID, userID(i)); err != nil {
+	if err := b.Store.ClearPollMessage(ctx, view.Poll.ID, leaderID); err != nil {
 		return err
 	}
-	if err := b.publishUnpublished(context.Background()); err != nil {
-		return err
-	}
-	return b.update(i, "Latest timetable republished.", nil)
+	return b.publishUnpublished(ctx)
 }

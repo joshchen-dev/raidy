@@ -148,7 +148,7 @@ func (b *Bot) pickManagedTeam(i *discordgo.Interaction, values []string) error {
 }
 
 func (b *Bot) beginRosterManagement(i *discordgo.Interaction, value team.Team, update bool) error {
-	draft := team.TeamDraft{TeamID: value.ID, GuildID: value.GuildID, UserID: value.LeaderID, Name: value.Name, Timezone: value.Timezone, MemberIDs: value.MemberIDs}
+	draft := team.TeamDraft{TeamID: value.ID, GuildID: value.GuildID, GuildName: value.GuildName, UserID: value.LeaderID, Name: value.Name, Timezone: value.Timezone, MemberIDs: value.MemberIDs}
 	token, err := b.Drafts.NewTeam(draft)
 	if err != nil {
 		return err
@@ -225,13 +225,25 @@ func (b *Bot) commitTeam(i *discordgo.Interaction, token string) error {
 		return err
 	}
 	if draft.TeamID == 0 {
-		created, err := b.Store.CreateTeam(context.Background(), draft.GuildID, draft.UserID, draft.Name, draft.Timezone, draft.MemberIDs)
+		guild, guildErr := b.Session.State.Guild(draft.GuildID)
+		if guildErr != nil {
+			guild, guildErr = b.Session.Guild(draft.GuildID)
+		}
+		if guildErr != nil {
+			return guildErr
+		}
+		created, err := b.Store.CreateTeam(context.Background(), draft.GuildID, guild.Name, draft.UserID, draft.Name, draft.Timezone, draft.MemberIDs)
 		if err != nil {
 			return err
 		}
 		draft.TeamID = created.ID
-	} else if err := b.Store.ReplaceRoster(context.Background(), draft.TeamID, draft.UserID, draft.MemberIDs); err != nil {
-		return err
+	} else {
+		if err := b.Store.ReplaceRoster(context.Background(), draft.TeamID, draft.UserID, draft.MemberIDs); err != nil {
+			return err
+		}
+		if err := b.RefreshTeamPoll(context.Background(), draft.TeamID); err != nil {
+			b.Log.Error("poll refresh after roster update failed", "team_id", draft.TeamID, "error", err)
+		}
 	}
 	b.Drafts.DeleteTeam(token)
 	return b.update(i, "Saved **"+draft.Name+"**.", nil)

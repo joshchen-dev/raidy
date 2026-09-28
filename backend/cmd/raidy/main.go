@@ -14,6 +14,8 @@ import (
 
 	raidydiscord "github.com/joshchen-dev/raidy/internal/discord"
 	"github.com/joshchen-dev/raidy/internal/postgres"
+	raidyweb "github.com/joshchen-dev/raidy/internal/web"
+	"github.com/joshchen-dev/raidy/migrations"
 )
 
 func main() {
@@ -32,6 +34,9 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if err := migrations.Up(ctx, databaseURL); err != nil {
+		return err
+	}
 	store, err := postgres.Open(ctx, databaseURL)
 	if err != nil {
 		return err
@@ -42,7 +47,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	session.Identify.Intents = discordgo.IntentsGuilds
+	session.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMembers
 	bot := raidydiscord.New(session, store, log)
 	session.AddHandler(bot.Handle)
 	if err := session.Open(); err != nil {
@@ -58,7 +63,14 @@ func run(log *slog.Logger) error {
 	if address == "" {
 		address = ":8080"
 	}
-	server := &http.Server{Addr: address, Handler: healthHandler(store), ReadHeaderTimeout: 5 * time.Second}
+	webHandler, err := raidyweb.New(store, session, bot, log, raidyweb.Config{
+		ClientID: os.Getenv("DISCORD_CLIENT_ID"), ClientSecret: os.Getenv("DISCORD_CLIENT_SECRET"),
+		BaseURL: os.Getenv("APP_BASE_URL"), StaticDir: os.Getenv("WEB_DIST_DIR"),
+	})
+	if err != nil {
+		return err
+	}
+	server := &http.Server{Addr: address, Handler: webHandler.Routes(healthHandler(store)), ReadHeaderTimeout: 5 * time.Second}
 	serverErr := make(chan error, 1)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

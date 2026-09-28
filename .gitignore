@@ -2,3 +2,5 @@
 .DS_Store
 /backend/raidy
 /backend/coverage.out
+/web/node_modules/
+/web/dist/

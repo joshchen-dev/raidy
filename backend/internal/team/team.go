@@ -15,6 +15,7 @@ import (
 type Team struct {
 	ID        int64
 	GuildID   string
+	GuildName string
 	Name      string
 	Timezone  string
 	LeaderID  string
@@ -29,10 +30,12 @@ type Schedule struct {
 	CadenceDays     int
 	StartMinutes    int
 	EndMinutes      int
+	PublishLeadDays int
 	Weekdays        []time.Weekday
 	NextPeriodStart time.Time
 	NextPublishAt   time.Time
 	ChannelID       string
+	ChannelName     string
 	Enabled         bool
 }
 
@@ -76,6 +79,7 @@ type PollView struct {
 type TeamDraft struct {
 	TeamID    int64
 	GuildID   string
+	GuildName string
 	UserID    string
 	Name      string
 	Timezone  string
@@ -98,6 +102,7 @@ type ScheduleDraft struct {
 	FirstPublishAt   time.Time
 	DatePageStart    time.Time
 	ChannelID        string
+	ChannelName      string
 	ExpiresAt        time.Time
 }
 

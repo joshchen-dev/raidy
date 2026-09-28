@@ -69,25 +69,40 @@ func (b *Bot) editPoll(ctx context.Context, pollID int64, active bool) error {
 	return err
 }
 
+func (b *Bot) RefreshTeamPoll(ctx context.Context, teamID int64) error {
+	view, err := b.Store.LatestPoll(ctx, teamID)
+	if errors.Is(err, postgres.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return b.editPoll(ctx, view.Poll.ID, true)
+}
+
 func renderPoll(view team.PollView, active bool) ([]*discordgo.MessageEmbed, []discordgo.MessageComponent) {
 	fields := make([]*discordgo.MessageEmbedField, 0, len(view.Poll.Occurrences))
 	for _, occurrence := range view.Poll.Occurrences {
 		available, unavailable := 0, 0
+		var availableMembers, unavailableMembers, pendingMembers []string
 		for _, memberID := range view.Members {
-			value, submitted := view.Availability[occurrence.ID][memberID]
+			choice, submitted := view.Availability[occurrence.ID][memberID]
 			if !submitted {
+				pendingMembers = append(pendingMembers, memberID)
 				continue
 			}
-			if value {
+			if choice {
 				available++
+				availableMembers = append(availableMembers, memberID)
 			} else {
 				unavailable++
+				unavailableMembers = append(unavailableMembers, memberID)
 			}
 		}
 		pending := len(view.Members) - available - unavailable
 		fields = append(fields, &discordgo.MessageEmbedField{
 			Name:  fmt.Sprintf("%s <t:%d:F>", statusIcon(occurrence.Status), occurrence.StartsAt.Unix()),
-			Value: fmt.Sprintf("Available **%d** · Unavailable **%d** · Pending **%d**\nStatus: %s", available, unavailable, pending, statusLabel(occurrence.Status)),
+			Value: fmt.Sprintf("Available **%d** · Unavailable **%d** · Pending **%d**\nStatus: %s\nAvailable: %s\nUnavailable: %s\nPending: %s", available, unavailable, pending, statusLabel(occurrence.Status), memberMentions(availableMembers), memberMentions(unavailableMembers), memberMentions(pendingMembers)),
 		})
 	}
 	embed := &discordgo.MessageEmbed{
@@ -105,6 +120,17 @@ func renderPoll(view team.PollView, active bool) ([]*discordgo.MessageEmbed, []d
 		discordgo.Button{CustomID: "poll_manage:" + id, Label: "Manage dates", Style: discordgo.SecondaryButton},
 	}}}
 	return []*discordgo.MessageEmbed{embed}, components
+}
+
+func memberMentions(ids []string) string {
+	if len(ids) == 0 {
+		return "—"
+	}
+	mentions := make([]string, len(ids))
+	for index, id := range ids {
+		mentions[index] = "<@" + id + ">"
+	}
+	return strings.Join(mentions, ", ")
 }
 
 func statusIcon(status string) string {
