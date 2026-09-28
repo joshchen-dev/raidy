@@ -14,7 +14,6 @@ services:
       retries: 15
     volumes:
       - raidy-db:/var/lib/postgresql/data
-      - ../../backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
 
 volumes:
   raidy-db:

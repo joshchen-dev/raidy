@@ -34,10 +34,35 @@ jobs:
       TEST_DATABASE_URL: postgres://raidy:raidy@localhost:5432/raidy_test?sslmode=disable
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v6.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Check version
+        working-directory: ${{ github.workspace }}
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          version=$(node -p "require('./web/package.json').version")
+          lock_version=$(node -p "require('./web/package-lock.json').version")
+          test "$version" = "$lock_version"
+          grep -Fq "**Status:** \`v${version}\`" README.md
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$PR_TITLE" =~ ^(feat|fix)(\(.+\))?!?: ]]; then
+            if git cat-file -e "origin/${GITHUB_BASE_REF}:web/package.json" 2>/dev/null; then
+              base_version=$(git show "origin/${GITHUB_BASE_REF}:web/package.json" | node -e "let value=''; process.stdin.on('data', chunk => value += chunk).on('end', () => console.log(JSON.parse(value).version))")
+            else
+              base_version=$(git show "origin/${GITHUB_BASE_REF}:README.md" | node -e "let value=''; process.stdin.on('data', chunk => value += chunk).on('end', () => console.log(value.match(/v([0-9]+\.[0-9]+\.[0-9]+)/)[1]))")
+            fi
+            expected=$(node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); console.log(major + '.' + minor + '.' + (patch + 1))" "$base_version")
+            test "$version" = "$expected"
+          fi
       - name: Check dependencies
         run: |
           go mod tidy
@@ -46,3 +71,9 @@ jobs:
         run: go test ./...
       - name: Vet
         run: go vet ./...
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build web console
+        working-directory: web
+        run: npm run build

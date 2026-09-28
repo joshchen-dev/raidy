@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS teams (
     id          BIGSERIAL PRIMARY KEY,
     guild_id    TEXT NOT NULL,
@@ -79,3 +80,14 @@ CREATE TABLE IF NOT EXISTS poll_availability (
 CREATE INDEX IF NOT EXISTS schedule_settings_due_idx
     ON schedule_settings (next_publish_at) WHERE enabled;
 CREATE INDEX IF NOT EXISTS poll_occurrences_poll_idx ON poll_occurrences (poll_id);
+
+-- +goose Down
+DROP TABLE IF EXISTS poll_availability;
+DROP TABLE IF EXISTS poll_submissions;
+DROP TABLE IF EXISTS poll_occurrences;
+DROP TABLE IF EXISTS poll_members;
+DROP TABLE IF EXISTS schedule_polls;
+DROP TABLE IF EXISTS schedule_weekdays;
+DROP TABLE IF EXISTS schedule_settings;
+DROP TABLE IF EXISTS team_members;
+DROP TABLE IF EXISTS teams;

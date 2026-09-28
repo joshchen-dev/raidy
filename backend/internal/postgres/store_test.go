@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/joshchen-dev/raidy/internal/team"
+	"github.com/joshchen-dev/raidy/migrations"
 )
 
 func TestSchedulingLifecycle(t *testing.T) {
@@ -23,11 +24,7 @@ func TestSchedulingLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	schema, err := os.ReadFile("../../migrations/001_init.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, string(schema)); err != nil {
+	if err := migrations.Up(ctx, databaseURL); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `TRUNCATE teams CASCADE`); err != nil {
@@ -35,10 +32,10 @@ func TestSchedulingLifecycle(t *testing.T) {
 	}
 	store := &Store{pool: pool}
 
-	if _, err := store.CreateTeam(ctx, "guild", "leader", "Too Big", "Asia/Tokyo", []string{"1", "2", "3", "4", "5", "6", "7", "8"}); err == nil {
+	if _, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "Too Big", "Asia/Tokyo", []string{"1", "2", "3", "4", "5", "6", "7", "8"}); err == nil {
 		t.Fatal("expected eight-member limit error")
 	}
-	created, err := store.CreateTeam(ctx, "guild", "leader", "The Echo", "Asia/Tokyo", []string{"a", "b"})
+	created, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "The Echo", "Asia/Tokyo", []string{"a", "b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,9 +52,18 @@ func TestSchedulingLifecycle(t *testing.T) {
 		FirstPeriodStart: periodStart,
 		FirstPublishAt:   publishAt,
 		ChannelID:        "channel",
+		ChannelName:      "raid-schedule",
 	}
 	if err := store.SaveSchedule(ctx, draft); err != nil {
 		t.Fatal(err)
+	}
+	savedSchedule, err := store.Schedule(ctx, created.ID)
+	if err != nil || savedSchedule.PublishLeadDays != 3 || savedSchedule.ChannelName != "raid-schedule" || created.GuildName != "Raid Night" {
+		t.Fatalf("saved destination guild=%q channel=%q lead=%d err=%v", created.GuildName, savedSchedule.ChannelName, savedSchedule.PublishLeadDays, err)
+	}
+	memberTeams, err := store.TeamsForUser(ctx, "a")
+	if err != nil || len(memberTeams) != 1 || memberTeams[0].ID != created.ID {
+		t.Fatalf("member teams=%+v err=%v", memberTeams, err)
 	}
 	var enabled bool
 	if err := pool.QueryRow(ctx, `SELECT enabled FROM schedule_settings WHERE team_id=$1`, created.ID).Scan(&enabled); err != nil || !enabled {
@@ -80,18 +86,34 @@ func TestSchedulingLifecycle(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schedule_polls WHERE team_id=$1`, created.ID).Scan(&pollCount); err != nil || pollCount != 1 {
 		t.Fatalf("idempotent poll count=%d err=%v", pollCount, err)
 	}
-	if err := store.ReplaceRoster(ctx, created.ID, "leader", []string{"new"}); err != nil {
-		t.Fatal(err)
-	}
 	view, err := store.PollView(ctx, poll.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(view.Members) != 3 || !containsID(view.Members, "a") || containsID(view.Members, "new") {
-		t.Fatalf("poll roster was not snapshotted: %v", view.Members)
-	}
 	occurrence := view.Poll.Occurrences[0]
 	now := occurrence.StartsAt.Add(-time.Hour)
+	for _, member := range []string{"leader", "a"} {
+		if err := store.SetAvailability(ctx, poll.ID, member, []int64{occurrence.ID}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view, err = store.PollView(ctx, poll.ID)
+	if err != nil || pendingCount(view, occurrence.ID) != 1 {
+		t.Fatalf("pending before roster removal=%d err=%v", pendingCount(view, occurrence.ID), err)
+	}
+	if err := store.UpdateTeam(ctx, created.ID, "leader", "The Echo", "Asia/Tokyo", []string{"a", "new"}); err != nil {
+		t.Fatal(err)
+	}
+	view, err = store.PollView(ctx, poll.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Members) != 3 || !containsID(view.Members, "a") || !containsID(view.Members, "new") || containsID(view.Members, "b") || pendingCount(view, occurrence.ID) != 1 {
+		t.Fatalf("active poll roster=%v pending=%d", view.Members, pendingCount(view, occurrence.ID))
+	}
+	if err := store.SetAvailability(ctx, poll.ID, "b", nil, now); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("removed member availability error = %v", err)
+	}
 	if err := store.SetAvailability(ctx, poll.ID, "outsider", nil, now); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("outsider availability error = %v", err)
 	}
@@ -102,10 +124,8 @@ func TestSchedulingLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertStatus(t, store, poll.ID, "attention_required")
-	for _, member := range view.Members {
-		if err := store.SetAvailability(ctx, poll.ID, member, []int64{occurrence.ID}, now); err != nil {
-			t.Fatal(err)
-		}
+	if err := store.SetAvailability(ctx, poll.ID, "new", []int64{occurrence.ID}, now); err != nil {
+		t.Fatal(err)
 	}
 	assertStatus(t, store, poll.ID, "confirmed")
 	if err := store.SetAvailability(ctx, poll.ID, "a", nil, now); err != nil {
@@ -135,6 +155,13 @@ func TestSchedulingLifecycle(t *testing.T) {
 	if err := store.SetAvailability(ctx, poll.ID, "leader", nil, occurrence.StartsAt); !errors.Is(err, ErrExpired) {
 		t.Fatalf("expired availability error = %v", err)
 	}
+	if err := store.UpdateTeam(ctx, created.ID, "leader", "The Echo", "Asia/Tokyo", nil); err != nil {
+		t.Fatal(err)
+	}
+	view, err = store.PollView(ctx, poll.ID)
+	if err != nil || len(view.Members) != 3 || !containsID(view.Members, "a") || !containsID(view.Members, "new") {
+		t.Fatalf("closed poll history changed: members=%v err=%v", view.Members, err)
+	}
 	if err := store.DeleteTeam(ctx, created.ID, "leader"); err != nil {
 		t.Fatal(err)
 	}
@@ -162,4 +189,14 @@ func containsID(values []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+func pendingCount(view team.PollView, occurrenceID int64) int {
+	pending := len(view.Members)
+	for _, memberID := range view.Members {
+		if _, submitted := view.Availability[occurrenceID][memberID]; submitted {
+			pending--
+		}
+	}
+	return pending
 }
