@@ -1,4 +1,5 @@
 .env
+secret.env
 .DS_Store
 /backend/raidy
 /backend/coverage.out

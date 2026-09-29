@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/joshchen-dev/raidy
+    newName: raidy
+    newTag: local
+configMapGenerator:
+  - name: raidy-config
+    behavior: merge
+    literals:
+      - APP_BASE_URL=http://localhost:8080
