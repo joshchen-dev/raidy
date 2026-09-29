@@ -4,13 +4,13 @@
 
 Raidy is a Discord-first raid scheduling project. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
-**Status:** `v0.0.2` is an early development snapshot.
+**Status:** `v0.0.3` is an early development snapshot.
 
 ```text
 backend/     Go service, Discord interactions, web API, PostgreSQL migrations
 web/         React, TypeScript, Vite, Tailwind CSS
 e2e/         future cross-component tests
-deployment/  local PostgreSQL and future deployment manifests
+deployment/  local PostgreSQL and Kubernetes deployment manifests
 ```
 
 ## MVP behavior
@@ -56,6 +56,10 @@ The Vite development server opens at `http://localhost:5173` and proxies API cal
 
 The Go process applies pinned, embedded Goose migrations before opening the application store. Existing local databases are upgraded in place.
 
+## Run on local Kubernetes
+
+The production image packages the Go service and built web console. The local Kustomize overlay runs it with a persistent PostgreSQL instance on k3d and exposes it through `kubectl port-forward`; see [deployment/README.md](deployment/README.md).
+
 ## Verify
 
 ```sh
@@ -79,7 +83,7 @@ Use a conventional PR title because it becomes the commit on `main`. During pre-
 
 ## Roadmap
 
-1. Complete the manual Discord checks, then deploy this single replica to the RHEL/k3s homelab with Ansible, Argo CD, monitoring, off-device backups, and a documented restore test.
+1. Validate the container and Kubernetes manifests on k3d, then deploy this single replica to the RHEL/k3s homelab with Ansible, Argo CD, monitoring, off-device backups, and a documented restore test.
 2. Add reminders and retryable notifications; add a transactional outbox and Kafka only when those asynchronous workloads exist.
 3. Add Discord-to-FFXIV character verification, then Party Finder workflows.
 4. Add cross-component tests and an on-demand AWS deployment path.
