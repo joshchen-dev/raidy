@@ -1,0 +1,9 @@
+.git
+.github
+.env
+**/.env
+**/secret.env
+backend/coverage.out
+backend/raidy
+web/dist
+web/node_modules
