@@ -63,3 +63,30 @@ test("the page never scrolls sideways on a phone", async ({ page }, testInfo) =>
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+// Regression: the Schedule tab froze while it fetched Discord channels on
+// open. It must render from the saved schedule and only ask Discord for
+// channels when the leader chooses to change the destination.
+test("schedule shows the saved destination and loads channels only on demand", async ({ page }) => {
+  const recorder = await mockSignedInLeader(page);
+  await page.goto("/app");
+  await page.getByRole("button", { name: "Schedule" }).click();
+  // Regression: saved names used to render as "Discord server" / "Saved channel".
+  await expect(page.getByText("Posts go to Scions.")).toBeVisible();
+  await expect(page.getByText("#raid-schedule")).toBeVisible();
+  await expect(page.getByText("Saved channel")).toHaveCount(0);
+  expect(recorder.requests.some((request) => request.includes("/channels"))).toBe(false);
+
+  await page.getByRole("button", { name: "Change" }).click();
+  await expect(page.getByRole("combobox", { name: "Discord channel" })).toBeVisible();
+  expect(recorder.requests).toContain("GET /api/guilds/g1/channels");
+});
+
+// Regression: raid times rendered as "09:00 PM"; schedules use a 24-hour clock.
+test("raid times use a 24-hour clock", async ({ page }) => {
+  await mockSignedInLeader(page);
+  await page.goto("/app");
+  const header = page.getByRole("columnheader").nth(1);
+  await expect(header).toContainText("21:00");
+  await expect(header).not.toContainText(/AM|PM/);
+});
