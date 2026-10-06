@@ -93,6 +93,7 @@ func (h *Handler) Routes(health http.Handler) http.Handler {
 	api.HandleFunc("POST /api/teams/{teamID}/republish", h.republish)
 	api.HandleFunc("GET /api/teams/{teamID}/polls", h.openPolls)
 	api.HandleFunc("POST /api/occurrences/{occurrenceID}/status", h.occurrenceStatus)
+	api.HandleFunc("PUT /api/polls/{pollID}/availability", h.availability)
 	root.Handle("/api/", h.requireSession(api))
 	root.HandleFunc("/", h.serveApp)
 	return root

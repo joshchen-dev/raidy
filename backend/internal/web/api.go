@@ -597,6 +597,37 @@ func pollJSON(view team.PollView) pollResponse {
 	return result
 }
 
+func (h *Handler) availability(w http.ResponseWriter, r *http.Request) {
+	pollID, err := strconv.ParseInt(r.PathValue("pollID"), 10, 64)
+	if err != nil || pollID <= 0 {
+		h.fail(w, r, clientError{message: "invalid timetable"})
+		return
+	}
+	var input struct {
+		Available *[]int64 `json:"available"`
+	}
+	if err := decode(r, &input); err != nil {
+		h.fail(w, r, clientError{err.Error()})
+		return
+	}
+	if input.Available == nil {
+		h.fail(w, r, clientError{message: "available must list the dates you can attend"})
+		return
+	}
+	for _, id := range *input.Available {
+		if id <= 0 {
+			h.fail(w, r, clientError{message: "invalid raid date"})
+			return
+		}
+	}
+	// SetAvailability only accepts members of this poll's roster snapshot.
+	if err := h.bot.SubmitAvailability(r.Context(), pollID, sessionFrom(r.Context()).User.ID, *input.Available); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) occurrenceStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("occurrenceID"), 10, 64)
 	if err != nil || id <= 0 {

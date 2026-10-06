@@ -90,3 +90,23 @@ test("raid times use a 24-hour clock", async ({ page }) => {
   await expect(header).toContainText("21:00");
   await expect(header).not.toContainText(/AM|PM/);
 });
+
+test("a member edits and saves their availability on the web", async ({ page }) => {
+  const recorder = await mockSignedInLeader(page);
+  await page.goto("/app");
+  const grid = page.getByRole("table", { name: /availability/i });
+  // The signed-in member's row comes first and is marked as theirs.
+  await expect(grid.getByRole("rowheader").first()).toContainText("Alisaie");
+  await expect(grid.getByRole("rowheader").first()).toContainText("You");
+
+  await page.getByRole("button", { name: "Edit my availability" }).click();
+  const thursday = page.getByRole("button", { name: "Available on Thu 8" });
+  await expect(thursday).toHaveAttribute("aria-pressed", "true");
+  await thursday.click();
+  await expect(thursday).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Save availability" }).click();
+
+  await expect(page.getByText("Availability saved")).toBeVisible();
+  expect(recorder.bodies["PUT /api/polls/10/availability"]).toEqual({ available: [101, 103] });
+  await expect(page.getByRole("button", { name: "Edit my availability" })).toBeVisible();
+});

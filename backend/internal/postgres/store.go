@@ -655,7 +655,7 @@ func (s *Store) SetAvailability(ctx context.Context, pollID int64, memberID stri
 	wanted := make(map[int64]bool, len(availableIDs))
 	for _, id := range availableIDs {
 		if !valid[id] {
-			return errors.New("invalid or expired occurrence")
+			return ValidationError{"invalid or expired occurrence"}
 		}
 		wanted[id] = true
 	}

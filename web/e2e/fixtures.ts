@@ -104,6 +104,8 @@ export async function mockSignedInLeader(page: Page): Promise<Recorder> {
           { id: "c1", name: "raid-schedule" },
           { id: "c2", name: "general" }
         ]);
+      case "PUT /api/polls/10/availability":
+        return route.fulfill({ status: 204 });
       case "POST /api/occurrences/102/status":
         return route.fulfill({ status: 204 });
       default:
