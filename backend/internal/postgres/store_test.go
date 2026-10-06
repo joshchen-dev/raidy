@@ -68,6 +68,55 @@ func TestForcedPublishDoesNotSkipPeriods(t *testing.T) {
 	}
 }
 
+func TestCatchUpSkipsElapsedPeriods(t *testing.T) {
+	store, pool := openTestStore(t)
+	ctx := context.Background()
+	created, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "The Echo", "Asia/Tokyo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	location, _ := time.LoadLocation("Asia/Tokyo")
+	// The bot was offline for three weeks: periods starting Sep 7, 14, and 21
+	// are over, and the period starting Sep 28 still has Wednesday ahead.
+	firstPeriod := time.Date(2026, 9, 7, 0, 0, 0, 0, location)
+	if err := store.SaveSchedule(ctx, team.ScheduleDraft{
+		TeamID: created.ID, UserID: "leader", CadenceDays: 7, Weekdays: []time.Weekday{time.Wednesday},
+		StartMinutes: 21 * 60, EndMinutes: 23 * 60, FirstPeriodStart: firstPeriod,
+		FirstPublishAt: firstPeriod.Add(-3 * 24 * time.Hour), ChannelID: "channel",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, location)
+	for i := 0; i < 10; i++ {
+		_, advanced, err := store.PublishNext(ctx, created.ID, false, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !advanced {
+			break
+		}
+	}
+	rows, err := pool.Query(ctx, `SELECT period_start FROM schedule_polls WHERE team_id=$1 ORDER BY period_start`, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var periods []string
+	for rows.Next() {
+		var start time.Time
+		if err := rows.Scan(&start); err != nil {
+			t.Fatal(err)
+		}
+		periods = append(periods, start.Format("2006-01-02"))
+	}
+	if len(periods) != 1 || periods[0] != "2026-09-28" {
+		t.Fatalf("polls created while catching up = %v, want only [2026-09-28]", periods)
+	}
+	schedule, err := store.Schedule(ctx, created.ID)
+	if err != nil || schedule.NextPeriodStart.Format("2006-01-02") != "2026-10-05" {
+		t.Fatalf("next period = %v err=%v, want 2026-10-05", schedule.NextPeriodStart, err)
+	}
+}
+
 func TestWebSessionsPersistAndExpire(t *testing.T) {
 	store, pool := openTestStore(t)
 	ctx := context.Background()
