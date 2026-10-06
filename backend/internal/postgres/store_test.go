@@ -344,6 +344,10 @@ func TestSchedulingLifecycle(t *testing.T) {
 	if err := store.SetAvailability(ctx, poll.ID, "outsider", nil, now); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("outsider availability error = %v", err)
 	}
+	var validation ValidationError
+	if err := store.SetAvailability(ctx, poll.ID, "a", []int64{999999}, now); !errors.As(err, &validation) {
+		t.Fatalf("foreign occurrence availability error = %v, want ValidationError", err)
+	}
 	if err := store.SetOccurrenceStatus(ctx, occurrence.ID, "outsider", "confirm", now); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("outsider status error = %v", err)
 	}

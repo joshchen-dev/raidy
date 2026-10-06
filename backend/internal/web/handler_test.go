@@ -128,3 +128,25 @@ func TestAppConfigExposesBotInviteWithoutSession(t *testing.T) {
 		t.Fatalf("config = %d %s", response.Code, response.Body.String())
 	}
 }
+
+func TestAvailabilityRejectsInvalidInput(t *testing.T) {
+	h := &Handler{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	tests := []struct{ id, body string }{
+		{"0", `{"available":[1]}`},
+		{"abc", `{"available":[1]}`},
+		{"7", `{"available":[0]}`},
+		{"7", `{"available":[1],"extra":true}`},
+		{"7", `{}`},
+	}
+	for _, test := range tests {
+		request := httptest.NewRequest(http.MethodPut, "/api/polls/"+test.id+"/availability", strings.NewReader(test.body))
+		request.Header.Set("Content-Type", "application/json")
+		request.SetPathValue("pollID", test.id)
+		request = request.WithContext(context.WithValue(request.Context(), sessionKey{}, session{User: user{ID: "member"}}))
+		response := httptest.NewRecorder()
+		h.availability(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("id=%s body=%s status = %d, want 400", test.id, test.body, response.Code)
+		}
+	}
+}

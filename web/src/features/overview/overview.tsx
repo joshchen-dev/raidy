@@ -15,11 +15,13 @@ const actionMessages: Record<OccurrenceAction, string> = {
 
 export function Overview({
   team,
+  currentUserID,
   revision,
   onEditSchedule,
   onError
 }: {
   team: Team;
+  currentUserID: string;
   revision: number;
   onEditSchedule: () => void;
   onError: (value: string) => void;
@@ -30,6 +32,8 @@ export function Overview({
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
   const [busyID, setBusyID] = useState<number | null>(null);
+  const [draft, setDraft] = useState<Set<number> | null>(null);
+  const [savingVotes, setSavingVotes] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -63,8 +67,48 @@ export function Overview({
     }
   }
 
+  function startEditing(current: Poll) {
+    const mine = current.occurrences.filter(
+      (occurrence) =>
+        occurrence.id &&
+        occurrence.votes?.some((vote) => vote.memberId === currentUserID && vote.status === "available")
+    );
+    setDraft(new Set(mine.map((occurrence) => occurrence.id!)));
+  }
+
+  function toggle(occurrenceID: number) {
+    setDraft((current) => {
+      const next = new Set(current);
+      if (next.has(occurrenceID)) next.delete(occurrenceID);
+      else next.add(occurrenceID);
+      return next;
+    });
+  }
+
+  async function saveVotes(current: Poll) {
+    if (!draft) return;
+    setSavingVotes(true);
+    try {
+      await api(`/api/polls/${current.id}/availability`, {
+        method: "PUT",
+        body: JSON.stringify({ available: [...draft] })
+      });
+      toast.success("Availability saved");
+      setDraft(null);
+      setReload((value) => value + 1);
+    } catch (reason) {
+      toast.error(message(reason));
+    } finally {
+      setSavingVotes(false);
+    }
+  }
+
   if (loading) return <LoadingPanel />;
   const poll = polls.find((value) => value.id === pollID) ?? null;
+  const canVote =
+    poll !== null &&
+    poll.occurrences.some((occurrence) => occurrence.votes?.some((vote) => vote.memberId === currentUserID)) &&
+    poll.occurrences.some((occurrence) => new Date(occurrence.startsAt) > new Date());
 
   if (!schedule) {
     return (
@@ -111,7 +155,13 @@ export function Overview({
         }
         actions={
           polls.length > 1 && (
-            <Select value={poll.id.toString()} onValueChange={(value) => setPollID(Number(value))}>
+            <Select
+              value={poll.id.toString()}
+              onValueChange={(value) => {
+                setPollID(Number(value));
+                setDraft(null);
+              }}
+            >
               <SelectTrigger className="h-8 w-44" aria-label="Voting period">
                 <SelectValue />
               </SelectTrigger>
@@ -126,16 +176,40 @@ export function Overview({
           )
         }
       />
+      {canVote && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {draft ? "Tap each date you can make, then save." : "Your answers are in the first row."}
+          </p>
+          {draft ? (
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" disabled={savingVotes} onClick={() => setDraft(null)}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={savingVotes} onClick={() => saveVotes(poll)}>
+                {savingVotes ? "Saving…" : "Save availability"}
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => startEditing(poll)}>
+              Edit my availability
+            </Button>
+          )}
+        </div>
+      )}
       <AvailabilityGrid
         poll={poll}
         members={team.members}
-        canManage={team.isLeader}
+        canManage={team.isLeader && !draft}
         busyID={busyID}
         onAction={changeOccurrence}
+        currentUserID={currentUserID}
+        draft={draft}
+        onToggle={toggle}
       />
-      <p className="mt-3 text-xs text-muted-foreground">
-        Members answer in Discord. {team.isLeader ? "Use ⋯ under a date to confirm, cancel, or reopen it." : ""}
-      </p>
+      {team.isLeader && !draft && (
+        <p className="mt-3 text-xs text-muted-foreground">Use ⋯ under a date to confirm, cancel, or reopen it.</p>
+      )}
     </>
   );
 }

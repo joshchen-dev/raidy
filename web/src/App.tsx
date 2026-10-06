@@ -192,7 +192,13 @@ export default function App() {
         ) : !selected ? (
           <NoServers inviteUrl={inviteUrl} />
         ) : tab === "overview" ? (
-          <Overview team={selected} revision={revision} onEditSchedule={() => setTab("schedule")} onError={setError} />
+          <Overview
+            team={selected}
+            currentUserID={user.id}
+            revision={revision}
+            onEditSchedule={() => setTab("schedule")}
+            onError={setError}
+          />
         ) : tab === "schedule" ? (
           <SchedulePanel
             team={selected}

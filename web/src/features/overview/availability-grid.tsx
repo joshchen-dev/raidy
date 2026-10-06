@@ -83,7 +83,10 @@ export function AvailabilityGrid({
   canManage,
   busyID,
   now = new Date(),
-  onAction
+  onAction,
+  currentUserID,
+  draft,
+  onToggle
 }: {
   poll: Poll;
   members: Member[];
@@ -91,6 +94,10 @@ export function AvailabilityGrid({
   busyID: number | null;
   now?: Date;
   onAction: (occurrence: Occurrence, action: OccurrenceAction) => void;
+  currentUserID?: string;
+  /** Dates the current user marks available while editing; null when not editing. */
+  draft?: Set<number> | null;
+  onToggle?: (occurrenceID: number) => void;
 }) {
   const occurrences = poll.occurrences;
   const memberIDs = Array.from(
@@ -99,7 +106,7 @@ export function AvailabilityGrid({
   const name = (id: string) => members.find((member) => member.id === id)?.name ?? "Former member";
   const rows = memberIDs
     .map((id) => members.find((member) => member.id === id) ?? { id, name: name(id) })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => (a.id === currentUserID ? -1 : b.id === currentUserID ? 1 : a.name.localeCompare(b.name)));
   const vote = (occurrence: Occurrence, id: string): Vote =>
     occurrence.votes?.find((value) => value.memberId === id)?.status ?? "pending";
 
@@ -136,11 +143,24 @@ export function AvailabilityGrid({
                 <span className="flex items-center gap-2.5">
                   <Avatar member={member} />
                   <span className="max-w-24 truncate sm:max-w-none">{member.name}</span>
+                  {member.id === currentUserID && <span className="text-xs text-muted-foreground">You</span>}
                 </span>
               </th>
               {occurrences.map((occurrence) => (
                 <td key={occurrence.id} className="px-2 py-2 text-center">
-                  <VoteCell vote={vote(occurrence, member.id)} name={member.name} />
+                  {draft && member.id === currentUserID && occurrence.id && new Date(occurrence.startsAt) > now ? (
+                    <button
+                      type="button"
+                      aria-pressed={draft.has(occurrence.id)}
+                      aria-label={`Available on ${formatDay(occurrence.startsAt, poll.timezone)}`}
+                      className="rounded ring-2 ring-primary/40 focus-visible:ring-primary"
+                      onClick={() => onToggle?.(occurrence.id!)}
+                    >
+                      <VoteCell vote={draft.has(occurrence.id) ? "available" : "unavailable"} name={member.name} />
+                    </button>
+                  ) : (
+                    <VoteCell vote={vote(occurrence, member.id)} name={member.name} />
+                  )}
                 </td>
               ))}
             </tr>

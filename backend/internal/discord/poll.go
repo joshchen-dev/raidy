@@ -213,6 +213,17 @@ func (b *Bot) saveAvailability(ctx context.Context, i *discordgo.Interaction, po
 	return nil
 }
 
+// SubmitAvailability records a member's answers made outside Discord: listed
+// dates become Available and every other upcoming date Unavailable. The
+// Discord announcement is refreshed in the background.
+func (b *Bot) SubmitAvailability(ctx context.Context, pollID int64, memberID string, available []int64) error {
+	if err := b.Store.SetAvailability(ctx, pollID, memberID, available, now()); err != nil {
+		return err
+	}
+	b.refresher.queue(pollID)
+	return nil
+}
+
 func (b *Bot) openPollManage(ctx context.Context, i *discordgo.Interaction, pollID int64) error {
 	if err := invalidID(pollID); err != nil {
 		return err
