@@ -597,6 +597,31 @@ func pollJSON(view team.PollView) pollResponse {
 	return result
 }
 
+func (h *Handler) occurrenceStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("occurrenceID"), 10, 64)
+	if err != nil || id <= 0 {
+		h.fail(w, r, clientError{message: "invalid raid date"})
+		return
+	}
+	var input struct {
+		Action string `json:"action"`
+	}
+	if err := decode(r, &input); err != nil {
+		h.fail(w, r, clientError{err.Error()})
+		return
+	}
+	if input.Action != "confirm" && input.Action != "cancel" && input.Action != "reopen" {
+		h.fail(w, r, clientError{message: "action must be confirm, cancel, or reopen"})
+		return
+	}
+	// SetOccurrenceStatus authorizes against the leader of the date's team.
+	if err := h.bot.ChangeOccurrence(r.Context(), id, sessionFrom(r.Context()).User.ID, input.Action); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) memberTeam(ctx context.Context, current session, rawID string) (team.Team, error) {
 	id, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || id <= 0 {

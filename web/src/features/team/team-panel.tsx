@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Trash2, X } from "lucide-react";
-import { api, type Guild, type Member, type Schedule, type Team, type User } from "@/api";
+import { X } from "lucide-react";
+import { toast } from "sonner";
+import { api, type Guild, type Member, type Team, type User } from "@/api";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,16 +13,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SectionTitle, Field, Avatar } from "@/components/common";
+import { Avatar, Field, PageHeader, Section } from "@/components/common";
 import { TimezoneCombobox } from "@/components/pickers";
 import { browserTimezone, message } from "@/lib/format";
+
+const rosterLimit = 8;
 
 export function TeamPanel({
   team,
@@ -70,7 +70,7 @@ export function TeamPanel({
   }, [guildID, query, currentUser.id]);
 
   function addMember(member: Member) {
-    if (selected.length >= 7 || selected.some((value) => value.id === member.id)) return;
+    if (selected.length >= rosterLimit - 1 || selected.some((value) => value.id === member.id)) return;
     setSelected([...selected, member]);
     setQuery("");
     setResults([]);
@@ -85,12 +85,14 @@ export function TeamPanel({
           method: "PATCH",
           body: JSON.stringify({ name, memberIds: selected.map((member) => member.id) })
         });
+        toast.success("Roster saved");
         await onSaved(team.id);
       } else {
         const created = await api<Team>("/api/teams", {
           method: "POST",
           body: JSON.stringify({ guildId: guildID, name, timezone, memberIds: selected.map((member) => member.id) })
         });
+        toast.success(`${name.trim()} created`);
         if (created) await onSaved(created.id);
       }
     } catch (reason) {
@@ -104,6 +106,7 @@ export function TeamPanel({
     if (!team) return;
     try {
       await api(`/api/teams/${team.id}`, { method: "DELETE" });
+      toast.success(`${team.name} deleted`);
       await onDeleted?.();
     } catch (reason) {
       onError(message(reason));
@@ -113,177 +116,170 @@ export function TeamPanel({
   if (team && !team.isLeader) {
     return (
       <>
-        <SectionTitle title="Team" detail="Only the team leader can change this roster." />
-        <Roster team={team} />
+        <PageHeader title="Roster" detail="Only the team leader can change the roster." />
+        <RosterList
+          members={team.members.map((member) => ({ member, role: member.id === team.leaderId ? "Leader" : "Member" }))}
+        />
       </>
     );
   }
 
+  const leader: Member = team?.members.find((member) => member.id === team.leaderId) ?? {
+    id: currentUser.id,
+    name: currentUser.globalName || currentUser.username
+  };
+  const full = selected.length >= rosterLimit - 1;
+
   return (
     <>
-      <SectionTitle
-        title={team ? "Team settings" : "Create a team"}
-        detail={
-          team
-            ? "Update the name or current Discord roster."
-            : "The creator becomes the leader and occupies the first roster slot."
-        }
+      <PageHeader
+        title={team ? "Roster" : "Create a team"}
+        detail={team ? team.guildName : "You become the leader and take the first of eight roster slots."}
       />
-      <Card className="max-w-3xl">
-        <form onSubmit={submit}>
-          <CardContent className="space-y-6 pb-6">
-            {!team && (
-              <Field label="Discord server">
-                <Select
-                  required
-                  value={guildID}
-                  onValueChange={(value) => {
-                    setGuildID(value);
-                    setSelected([]);
-                  }}
-                >
-                  <SelectTrigger className="h-11 w-full" aria-label="Discord server">
-                    <SelectValue placeholder="Choose a server" />
-                  </SelectTrigger>
-                  <SelectContent position="popper">
-                    {guilds.map((guild) => (
-                      <SelectItem key={guild.id} value={guild.id}>
-                        {guild.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            )}
-            <Field label="Team name">
-              <Input
-                className="h-11"
-                aria-label="Team name"
-                maxLength={80}
+      <form onSubmit={submit} className="max-w-4xl">
+        <Section title="Team" description={team ? undefined : "A team belongs to one Discord server."}>
+          {!team && (
+            <Field label="Discord server">
+              <Select
                 required
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="The Echo"
-              />
+                value={guildID}
+                onValueChange={(value) => {
+                  setGuildID(value);
+                  setSelected([]);
+                }}
+              >
+                <SelectTrigger className="h-10 w-full" aria-label="Discord server">
+                  <SelectValue placeholder="Choose a server" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {guilds.map((guild) => (
+                    <SelectItem key={guild.id} value={guild.id}>
+                      {guild.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
-            {!team ? (
-              <Field label="Timezone">
-                <TimezoneCombobox value={timezone} onChange={setTimezone} />
-              </Field>
-            ) : (
-              <div>
-                <Label>Timezone</Label>
-                <div className="mt-1.5 flex h-11 items-center rounded-lg border bg-muted/40 px-3 text-sm text-muted-foreground">
-                  {team.timezone}
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Change this from Schedule so future publication times are reviewed together.
-                </p>
-              </div>
-            )}
+          )}
+          <Field label="Name">
+            <Input
+              className="h-10"
+              aria-label="Team name"
+              maxLength={80}
+              required
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="The Echo"
+            />
+          </Field>
+          {!team ? (
+            <Field label="Timezone">
+              <TimezoneCombobox value={timezone} onChange={setTimezone} />
+            </Field>
+          ) : (
+            <Field label="Timezone" hint="Change it on the Schedule tab so raid times are reviewed together.">
+              <div className="flex h-10 items-center font-mono text-sm text-muted-foreground">{team.timezone}</div>
+            </Field>
+          )}
+        </Section>
+
+        <Section
+          title="Members"
+          description={`${selected.length + 1} of ${rosterLimit}. Members are Discord accounts in this server.`}
+        >
+          <RosterList
+            members={[
+              { member: leader, role: "Leader" },
+              ...selected.map((member) => ({
+                member,
+                role: "Member",
+                onRemove: () => setSelected(selected.filter((value) => value.id !== member.id))
+              }))
+            ]}
+          />
+          <MemberSearch
+            query={query}
+            onQueryChange={setQuery}
+            results={results.filter((result) => !selected.some((member) => member.id === result.id))}
+            disabled={!guildID || full}
+            full={full}
+            onSelect={addMember}
+          />
+        </Section>
+
+        <div className="flex justify-end gap-2 border-t pt-6">
+          {onCancel && (
+            <Button type="button" variant="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
+          <Button disabled={saving || !guildID}>{saving ? "Saving…" : team ? "Save roster" : "Create team"}</Button>
+        </div>
+      </form>
+
+      {team && (
+        <Section title="Danger zone" className="mt-10 max-w-4xl border-t">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-destructive/30 p-4">
             <div>
-              <Label className="mb-2">Teammates ({selected.length + 1}/8)</Label>
-              <div className="mb-3 flex flex-wrap gap-2">
-                <MemberChip
-                  member={{ id: currentUser.id, name: currentUser.globalName || currentUser.username }}
-                  fixed
-                />
-                {selected.map((member) => (
-                  <MemberChip
-                    key={member.id}
-                    member={member}
-                    onRemove={() => setSelected(selected.filter((value) => value.id !== member.id))}
-                  />
-                ))}
-              </div>
-              <MemberSearch
-                query={query}
-                onQueryChange={setQuery}
-                results={results.filter((result) => !selected.some((member) => member.id === result.id))}
-                disabled={!guildID || selected.length >= 7}
-                full={selected.length >= 7}
-                onSelect={addMember}
-              />
+              <div className="text-sm font-medium">Delete this team</div>
+              <p className="mt-0.5 text-sm text-muted-foreground">Removes the schedule and all timetable history.</p>
             </div>
-          </CardContent>
-          <CardFooter className="justify-between gap-3">
-            <div>
-              {team && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button type="button" variant="destructive">
-                      <Trash2 />
-                      Delete team
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete {team.name}?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This permanently removes the team, schedule, polls, and timetable history.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction variant="destructive" onClick={removeTeam}>
-                        Delete team
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-            </div>
-            <div className="flex gap-3">
-              {onCancel && (
-                <Button type="button" variant="outline" onClick={onCancel}>
-                  Cancel
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="outline" className="border-destructive/40 text-destructive">
+                  Delete team
                 </Button>
-              )}
-              <Button disabled={saving || !guildID}>{saving ? "Saving…" : team ? "Save team" : "Create team"}</Button>
-            </div>
-          </CardFooter>
-        </form>
-      </Card>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {team.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes the team, its schedule, and every timetable. It cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep team</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={removeTeam}>
+                    Delete team
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </Section>
+      )}
     </>
   );
 }
 
-export function Roster({ team }: { team: Team }) {
+function RosterList({ members }: { members: { member: Member; role: string; onRemove?: () => void }[] }) {
   return (
-    <Card className="max-w-2xl">
-      <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {team.members.map((member) => (
-            <div key={member.id} className="flex items-center gap-3 rounded-lg bg-muted p-3">
-              <Avatar member={member} />
-              <div>
-                <div className="font-medium">{member.name}</div>
-                <div className="text-xs text-muted-foreground">{member.id === team.leaderId ? "Leader" : "Member"}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <ul className="divide-y rounded-md border">
+      {members.map(({ member, role, onRemove }) => (
+        <li key={member.id} className="flex h-12 items-center gap-3 px-3">
+          <Avatar member={member} className="size-7" />
+          <span className="min-w-0 flex-1 truncate text-sm">{member.name}</span>
+          <span className="text-xs text-muted-foreground">{role}</span>
+          {onRemove ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Remove ${member.name}`}
+              onClick={onRemove}
+            >
+              <X />
+            </Button>
+          ) : (
+            <span className="w-6" aria-hidden="true" />
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
-export function MemberChip({ member, fixed, onRemove }: { member: Member; fixed?: boolean; onRemove?: () => void }) {
-  return (
-    <Badge variant="secondary" className="h-9 gap-2 px-3 text-sm">
-      <span>{member.name}</span>
-      {fixed ? (
-        <span className="text-xs text-muted-foreground">Leader</span>
-      ) : (
-        <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${member.name}`} onClick={onRemove}>
-          <X />
-        </Button>
-      )}
-    </Badge>
-  );
-}
-
-export function MemberSearch({
+function MemberSearch({
   query,
   onQueryChange,
   results,
@@ -299,16 +295,16 @@ export function MemberSearch({
   onSelect: (member: Member) => void;
 }) {
   return (
-    <Command shouldFilter={false} className="relative overflow-visible bg-transparent p-0">
+    <Command shouldFilter={false} className="relative h-auto overflow-visible bg-transparent p-0">
       <CommandInput
         value={query}
         onValueChange={onQueryChange}
         disabled={disabled}
-        placeholder={full ? "Roster is full" : "Search Discord members"}
+        placeholder={full ? "Roster is full" : "Add a member by Discord name"}
         aria-label="Search Discord members"
       />
       {query.trim() && !disabled && (
-        <CommandList className="absolute top-11 z-20 w-full rounded-lg bg-popover p-1 shadow-md ring-1 ring-foreground/10">
+        <CommandList className="absolute top-11 z-20 w-full rounded-md border bg-popover p-1 shadow-sm">
           <CommandEmpty>No matching members.</CommandEmpty>
           <CommandGroup>
             {results.map((member) => (

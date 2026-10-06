@@ -282,6 +282,22 @@ func (b *Bot) changeOccurrence(ctx context.Context, i *discordgo.Interaction, oc
 	return nil
 }
 
+// ChangeOccurrence applies a leader's confirm, cancel, or reopen decision made
+// outside Discord and refreshes the published timetable message.
+func (b *Bot) ChangeOccurrence(ctx context.Context, occurrenceID int64, leaderID, action string) error {
+	if err := b.Store.SetOccurrenceStatus(ctx, occurrenceID, leaderID, action, now()); err != nil {
+		return err
+	}
+	pollID, err := b.Store.PollIDForOccurrence(ctx, occurrenceID)
+	if err != nil {
+		return err
+	}
+	if err := b.editPoll(ctx, pollID, true); err != nil {
+		b.Log.Error("poll refresh failed", "poll_id", pollID, "occurrence_id", occurrenceID, "error", err)
+	}
+	return nil
+}
+
 func contains(values []string, wanted string) bool {
 	for _, value := range values {
 		if value == wanted {

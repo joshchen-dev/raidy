@@ -30,6 +30,7 @@ func TestFailMapsErrorsToStatus(t *testing.T) {
 		{"duplicate team", postgres.ErrDuplicateTeam, http.StatusConflict, "already exists"},
 		{"validation", fmt.Errorf("save: %w", postgres.ValidationError{Message: "select at least one weekday"}), http.StatusBadRequest, "select at least one weekday"},
 		{"timeout", context.DeadlineExceeded, http.StatusGatewayTimeout, "timed out"},
+		{"expired", postgres.ErrExpired, http.StatusConflict, "already started"},
 		{"database", &pgconn.PgError{Code: "57P01", Message: "terminating connection"}, http.StatusInternalServerError, "internal server error"},
 	}
 	for _, test := range tests {
@@ -95,5 +96,35 @@ func TestTeamResponseUsesCachedMembers(t *testing.T) {
 	}
 	if response.Members[0].Name != "Alice" || response.Members[1].Name != "missing" {
 		t.Fatalf("members = %+v", response.Members)
+	}
+}
+
+func TestOccurrenceStatusRejectsInvalidInput(t *testing.T) {
+	h := &Handler{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	tests := []struct{ id, body string }{
+		{"0", `{"action":"confirm"}`},
+		{"abc", `{"action":"confirm"}`},
+		{"7", `{"action":"delete"}`},
+		{"7", `{"action":"confirm","extra":true}`},
+	}
+	for _, test := range tests {
+		request := httptest.NewRequest(http.MethodPost, "/api/occurrences/"+test.id+"/status", strings.NewReader(test.body))
+		request.Header.Set("Content-Type", "application/json")
+		request.SetPathValue("occurrenceID", test.id)
+		request = request.WithContext(context.WithValue(request.Context(), sessionKey{}, session{User: user{ID: "leader"}}))
+		response := httptest.NewRecorder()
+		h.occurrenceStatus(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("id=%s body=%s status = %d, want 400", test.id, test.body, response.Code)
+		}
+	}
+}
+
+func TestAppConfigExposesBotInviteWithoutSession(t *testing.T) {
+	h := &Handler{config: Config{ClientID: "123", BaseURL: "http://localhost:5173"}}
+	response := httptest.NewRecorder()
+	h.Routes(http.NotFoundHandler()).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "client_id=123") || !strings.Contains(response.Body.String(), "applications.commands") {
+		t.Fatalf("config = %d %s", response.Code, response.Body.String())
 	}
 }

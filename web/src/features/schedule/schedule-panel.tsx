@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api, type Channel, type Schedule, type Team } from "@/api";
+import { Field, LoadingPanel, PageHeader, Section } from "@/components/common";
+import { DatePicker, TimeSelect, TimezoneCombobox } from "@/components/pickers";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Loading, SectionTitle, LoadingPanel, Field } from "@/components/common";
-import { TimezoneCombobox, TimeSelect, DatePicker } from "@/components/pickers";
-import { formatDateTime, formatTime, message } from "@/lib/format";
+import { describeSchedule, formatDateTime, formatDay, formatTime, message } from "@/lib/format";
 
 export const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -150,6 +149,7 @@ export function SchedulePanel({
       });
       setSaved(value);
       if (value) setForm(value);
+      toast.success(saved ? "Schedule saved" : "Schedule activated");
       await onChanged();
     } catch (reason) {
       onError(message(reason));
@@ -163,6 +163,7 @@ export function SchedulePanel({
     try {
       await api(`/api/teams/${team.id}/schedule/enabled`, { method: "POST", body: JSON.stringify({ enabled }) });
       setSaved(saved ? { ...saved, enabled } : saved);
+      toast.success(enabled ? "Automatic posting resumed" : "Automatic posting paused");
       await onChanged();
     } catch (reason) {
       onError(message(reason));
@@ -175,6 +176,7 @@ export function SchedulePanel({
     setPending(name);
     try {
       await api(`/api/teams/${team.id}/${name}`, { method: "POST" });
+      toast.success(name === "publish" ? "Next timetable posted to Discord" : "Timetable message restored");
       await onChanged();
     } catch (reason) {
       onError(message(reason));
@@ -184,101 +186,102 @@ export function SchedulePanel({
   }
 
   if (!team.isLeader)
-    return (
-      <>
-        <SectionTitle title="Schedule" detail="Only the team leader can edit the recurring schedule." />
-        <Card>
-          <CardContent>Ask your team leader to update the timetable.</CardContent>
-        </Card>
-      </>
-    );
+    return <PageHeader title="Schedule" detail="Only the team leader can change the recurring schedule." />;
   if (loading) return <LoadingPanel />;
+
+  const dirty = !saved || JSON.stringify(schedulePayload(form)) !== JSON.stringify(schedulePayload(saved));
+  const canSave = !saving && form.weekdays.length > 0 && Boolean(form.channelId);
 
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <SectionTitle title="Schedule" detail="Configure the next weekly or biweekly voting period." />
-        {saved && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" disabled={pending !== null} onClick={() => action("publish")}>
-              {pending === "publish" ? "Publishing…" : "Publish next now"}
-            </Button>
-            <Button variant="outline" disabled={pending !== null} onClick={() => action("republish")}>
-              {pending === "republish" ? "Republishing…" : "Republish latest"}
-            </Button>
-            <Button variant="outline" disabled={pending !== null} onClick={() => setEnabled(!saved.enabled)}>
-              {saved.enabled ? "Pause automation" : "Enable automation"}
-            </Button>
-          </div>
-        )}
-      </div>
-      <form className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]" onSubmit={submit}>
-        <Card>
-          <CardContent className="space-y-6">
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Cadence">
-                <Select
-                  value={form.cadenceDays.toString()}
-                  onValueChange={(value) => patch({ cadenceDays: Number(value) })}
-                >
-                  <SelectTrigger className="h-11 w-full" aria-label="Cadence">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent position="popper">
-                    <SelectItem value="7">Weekly</SelectItem>
-                    <SelectItem value="14">Biweekly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Timezone">
-                <TimezoneCombobox value={form.timezone} onChange={(value) => patch({ timezone: value })} />
-              </Field>
-            </div>
+      <PageHeader
+        title="Schedule"
+        detail={
+          saved
+            ? `${describeSchedule(saved)} · ${saved.enabled ? "posting automatically" : "automatic posting paused"}`
+            : "Set the raid days once. Raidy posts a vote in Discord before every period."
+        }
+        actions={
+          saved && (
+            <>
+              <Button variant="outline" size="sm" disabled={pending !== null} onClick={() => action("publish")}>
+                {pending === "publish" ? "Posting…" : "Post next period now"}
+              </Button>
+              <Button variant="outline" size="sm" disabled={pending !== null} onClick={() => action("republish")}>
+                {pending === "republish" ? "Restoring…" : "Restore message"}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={pending !== null} onClick={() => setEnabled(!saved.enabled)}>
+                {saved.enabled ? "Pause" : "Resume"}
+              </Button>
+            </>
+          )
+        }
+      />
+      <form className="grid gap-x-12 lg:grid-cols-[minmax(0,1fr)_300px]" onSubmit={submit}>
+        <div>
+          <Section title="When" description="One time slot, repeated on the days you pick.">
             <fieldset>
               <Label asChild>
-                <legend>Raid weekdays</legend>
+                <legend>Raid days</legend>
               </Label>
               <ToggleGroup
                 type="multiple"
                 variant="outline"
                 value={form.weekdays.map(String)}
                 onValueChange={(values) => patch({ weekdays: values.map(Number).sort() })}
-                className="mt-1.5 grid w-full grid-cols-4 gap-2 sm:grid-cols-7"
+                className="mt-1.5 flex w-full flex-wrap gap-1.5"
               >
                 {weekdays.map((label, day) => (
                   <ToggleGroupItem
                     key={label}
                     value={day.toString()}
                     aria-label={label}
-                    className="h-11 w-full data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                    className="h-9 min-w-12 flex-1 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
                   >
                     {label}
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
             </fieldset>
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Start time">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Starts">
                 <TimeSelect
                   label="Start time"
                   value={form.startTime}
                   onChange={(value) => patch({ startTime: value })}
                 />
               </Field>
-              <Field label="End time">
+              <Field label="Ends">
                 <TimeSelect label="End time" value={form.endTime} onChange={(value) => patch({ endTime: value })} />
               </Field>
             </div>
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="First period starts">
-                <DatePicker value={form.firstPeriodStart} onChange={(value) => patch({ firstPeriodStart: value })} />
+            <Field label="Timezone">
+              <TimezoneCombobox value={form.timezone} onChange={(value) => patch({ timezone: value })} />
+            </Field>
+          </Section>
+
+          <Section title="Voting" description="Each period gets its own availability vote in Discord.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Repeats">
+                <Select
+                  value={form.cadenceDays.toString()}
+                  onValueChange={(value) => patch({ cadenceDays: Number(value) })}
+                >
+                  <SelectTrigger className="h-10 w-full" aria-label="Cadence">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="7">Every week</SelectItem>
+                    <SelectItem value="14">Every two weeks</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
-              <Field label="Voting opens">
+              <Field label="Vote opens">
                 <Select
                   value={form.publishLeadDays.toString()}
                   onValueChange={(value) => patch({ publishLeadDays: Number(value) })}
                 >
-                  <SelectTrigger className="h-11 w-full" aria-label="Voting opens">
+                  <SelectTrigger className="h-10 w-full" aria-label="Voting opens">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent position="popper">
@@ -291,81 +294,87 @@ export function SchedulePanel({
                 </Select>
               </Field>
             </div>
-            <Field label="Discord destination">
-              <div className="rounded-lg border p-3">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Server</div>
-                <div className="mt-1 text-sm font-medium">{team.guildName || "Discord server"}</div>
-                <Separator className="my-3" />
-                {choosingChannel ? (
-                  <div>
-                    {channelsLoading ? (
-                      <div className="flex h-11 items-center rounded-lg border px-3 text-sm text-muted-foreground">
-                        Loading Discord channels…
-                      </div>
-                    ) : (
-                      <Select required value={form.channelId} onValueChange={chooseChannel}>
-                        <SelectTrigger className="h-11 w-full" aria-label="Discord channel">
-                          <SelectValue placeholder="Choose a channel" />
-                        </SelectTrigger>
-                        <SelectContent position="popper">
-                          {channels.map((channel) => (
-                            <SelectItem key={channel.id} value={channel.id}>
-                              #{channel.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {channelsError ? (
-                      <div className="mt-2 flex items-center justify-between gap-3 text-sm text-destructive">
-                        <span>{channelsError}</span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setChannelsRevision((value) => value + 1)}
-                        >
-                          Retry
-                        </Button>
-                      </div>
-                    ) : (
-                      !channelsLoading &&
-                      channels.length === 0 && (
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Raidy needs View Channel, Send Messages, and Embed Links permissions.
-                        </p>
-                      )
-                    )}
-                    {saved && (
-                      <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={cancelChannelChange}>
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
+            <Field label="First period starts">
+              <DatePicker value={form.firstPeriodStart} onChange={(value) => patch({ firstPeriodStart: value })} />
+            </Field>
+          </Section>
+
+          <Section title="Discord" description={`Posts go to ${team.guildName || "the team's server"}.`}>
+            {choosingChannel ? (
+              <Field label="Channel">
+                {channelsLoading ? (
+                  <div className="flex h-10 items-center text-sm text-muted-foreground">Loading channels…</div>
                 ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Channel</div>
-                      <div className="mt-1 text-sm font-medium">
-                        {form.channelName ? `#${form.channelName}` : "Saved channel"}
-                      </div>
-                    </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setChoosingChannel(true)}>
-                      Change channel
+                  <Select required value={form.channelId} onValueChange={chooseChannel}>
+                    <SelectTrigger className="h-10 w-full" aria-label="Discord channel">
+                      <SelectValue placeholder="Choose a channel" />
+                    </SelectTrigger>
+                    <SelectContent position="popper">
+                      {channels.map((channel) => (
+                        <SelectItem key={channel.id} value={channel.id}>
+                          #{channel.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {channelsError ? (
+                  <div className="mt-2 flex items-center gap-3 text-sm text-destructive">
+                    <span>{channelsError}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setChannelsRevision((value) => value + 1)}
+                    >
+                      Retry
                     </Button>
                   </div>
+                ) : (
+                  !channelsLoading &&
+                  channels.length === 0 && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      No channel allows Raidy to post. It needs View Channel, Send Messages, and Embed Links.
+                    </p>
+                  )
                 )}
+                {saved && (
+                  <Button type="button" variant="ghost" size="sm" className="mt-2 -ml-2" onClick={cancelChannelChange}>
+                    Keep #{saved.channelName || "current channel"}
+                  </Button>
+                )}
+              </Field>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Channel </span>
+                  <span className="font-medium">{form.channelName ? `#${form.channelName}` : "Saved channel"}</span>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setChoosingChannel(true)}>
+                  Change
+                </Button>
               </div>
-            </Field>
-            <Separator />
-            <div className="flex justify-end">
-              <Button disabled={saving || form.weekdays.length === 0 || !form.channelId}>
-                {saving ? "Saving…" : saved ? "Replace schedule" : "Activate schedule"}
+            )}
+          </Section>
+        </div>
+
+        <SchedulePreview schedule={preview} error={previewError} />
+
+        {dirty && (
+          <div className="sticky bottom-4 z-20 mt-6 flex items-center justify-between gap-4 rounded-md border bg-popover px-4 py-3 shadow-sm lg:col-span-2">
+            <span className="text-sm">{saved ? "You have unsaved changes" : "Review the preview, then activate"}</span>
+            <div className="flex gap-2">
+              {saved && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setForm(saved)}>
+                  Discard
+                </Button>
+              )}
+              <Button size="sm" disabled={!canSave}>
+                {saving ? "Saving…" : saved ? "Save schedule" : "Activate schedule"}
               </Button>
             </div>
-          </CardContent>
-        </Card>
-        <SchedulePreview schedule={preview} error={previewError} />
+          </div>
+        )}
       </form>
     </>
   );
@@ -373,37 +382,32 @@ export function SchedulePanel({
 
 export function SchedulePreview({ schedule, error }: { schedule: Schedule | null; error: string }) {
   return (
-    <Card className="self-start xl:sticky xl:top-6">
-      <CardHeader>
-        <CardTitle>Generated timetable</CardTitle>
-        <CardDescription>Times are generated and validated by the backend.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {!schedule ? (
-          <p className={`py-10 text-center text-sm ${error ? "text-destructive" : "text-muted-foreground"}`}>
-            {error || "Complete the form to preview dates."}
+    <aside className="self-start border-t pt-8 lg:sticky lg:top-6 lg:border-t-0 lg:pt-0" aria-label="Preview">
+      <h2 className="text-sm font-medium">First period</h2>
+      {!schedule ? (
+        <p className={`mt-3 text-sm ${error ? "text-destructive" : "text-muted-foreground"}`}>
+          {error || "Pick at least one day and a channel to preview dates."}
+        </p>
+      ) : (
+        <>
+          <ol className="mt-3 divide-y rounded-md border">
+            {schedule.occurrences?.map((occurrence) => (
+              <li key={occurrence.startsAt} className="flex items-center justify-between px-3 py-2 text-sm">
+                <span>{formatDay(occurrence.startsAt, schedule.timezone)}</span>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {formatTime(occurrence.startsAt, schedule.timezone)}–
+                  {formatTime(occurrence.endsAt, schedule.timezone)}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Vote posts{" "}
+            <span className="text-foreground">{formatDateTime(schedule.nextPublishAt, schedule.timezone)}</span>
           </p>
-        ) : (
-          <>
-            <div className="space-y-3">
-              {schedule.occurrences?.map((occurrence) => (
-                <div key={occurrence.startsAt} className="rounded-lg bg-muted p-3">
-                  <div className="font-medium">{formatDateTime(occurrence.startsAt, schedule.timezone)}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    Until {formatTime(occurrence.endsAt, schedule.timezone)}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Separator className="my-5" />
-            <div className="text-sm">
-              <span className="text-muted-foreground">First publication</span>
-              <div className="mt-1 font-medium">{formatDateTime(schedule.nextPublishAt, schedule.timezone)}</div>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+        </>
+      )}
+    </aside>
   );
 }
 
