@@ -69,6 +69,7 @@ export function Landing({
         <figure aria-label="Example availability grid">
           <AvailabilityGrid
             poll={samplePoll}
+            viewerTimezone={samplePoll.timezone}
             members={sampleMembers}
             canManage={false}
             busyID={null}

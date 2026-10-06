@@ -102,6 +102,38 @@ test("raid times use a 24-hour clock", async ({ page }) => {
   await expect(header).not.toContainText(/AM|PM/);
 });
 
+test.describe("a viewer in Los Angeles", () => {
+  test.use({ timezoneId: "America/Los_Angeles" });
+
+  test("sees raid times in their own timezone with the team's time beneath", async ({ page }) => {
+    await mockSignedInLeader(page);
+    await page.goto("/app");
+    const header = page.getByRole("columnheader").nth(1);
+    await expect(header).toContainText("Wed 7");
+    await expect(header).toContainText("05:00");
+    await expect(header).toContainText("21:00 Tokyo");
+  });
+});
+
+test.describe("a viewer in Auckland", () => {
+  test.use({ timezoneId: "Pacific/Auckland" });
+
+  test("sees the team's day when the raid falls on a different local day", async ({ page }) => {
+    await mockSignedInLeader(page);
+    await page.goto("/app");
+    const header = page.getByRole("columnheader").nth(1);
+    await expect(header).toContainText("Thu 8");
+    await expect(header).toContainText("01:00");
+    await expect(header).toContainText("Wed 7 21:00 Tokyo");
+  });
+});
+
+test("the team's time is not repeated for viewers in the team's timezone", async ({ page }) => {
+  await mockSignedInLeader(page);
+  await page.goto("/app");
+  await expect(page.getByRole("columnheader").nth(1)).not.toContainText("Tokyo");
+});
+
 test("a member edits and saves their availability on the web", async ({ page }) => {
   const recorder = await mockSignedInLeader(page);
   await page.goto("/app");

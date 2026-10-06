@@ -58,7 +58,7 @@ export function message(reason: unknown) {
 
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** "Wed 14" in the team's timezone. */
+/** "Wed 14" in the given timezone. */
 export function formatDay(value: string, timezone: string) {
   const parts = new Intl.DateTimeFormat(undefined, {
     timeZone: timezone,
@@ -67,6 +67,23 @@ export function formatDay(value: string, timezone: string) {
   }).formatToParts(new Date(value));
   const part = (type: string) => parts.find((value) => value.type === type)?.value ?? "";
   return `${part("weekday")} ${part("day")}`;
+}
+
+/** "Tokyo" for "Asia/Tokyo". */
+export function timezoneCity(timezone: string) {
+  return (timezone.split("/").pop() ?? timezone).replace(/_/g, " ");
+}
+
+/**
+ * The team's wall-clock time for an instant, or null when the viewer already
+ * sees the same thing. The day is included only when it differs.
+ */
+export function teamTime(value: string, teamTimezone: string, viewerTimezone: string) {
+  const time = formatTime(value, teamTimezone);
+  const day = formatDay(value, teamTimezone);
+  if (time === formatTime(value, viewerTimezone) && day === formatDay(value, viewerTimezone)) return null;
+  const sameDay = day === formatDay(value, viewerTimezone);
+  return `${sameDay ? "" : `${day} `}${time} ${timezoneCity(teamTimezone)}`;
 }
 
 /** "Oct 12 – 18" for an inclusive YYYY-MM-DD range. */
