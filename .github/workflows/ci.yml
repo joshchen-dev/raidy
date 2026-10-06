@@ -80,6 +80,12 @@ jobs:
       - name: Build web console
         working-directory: web
         run: npm run build
+      - name: Install Playwright browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Web interface tests
+        working-directory: web
+        run: npm run test:e2e
       - name: Validate Kubernetes manifests
         working-directory: ${{ github.workspace }}
         run: kubectl kustomize deployment/kubernetes/overlays/local >/dev/null

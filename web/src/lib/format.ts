@@ -38,16 +38,52 @@ export function formatDateTime(value: string, timezone: string) {
     month: "short",
     day: "numeric",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    hourCycle: "h23"
   }).format(new Date(value));
 }
 
 export function formatTime(value: string, timezone: string) {
-  return new Intl.DateTimeFormat(undefined, { timeZone: timezone, hour: "2-digit", minute: "2-digit" }).format(
-    new Date(value)
-  );
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(new Date(value));
 }
 
 export function message(reason: unknown) {
   return reason instanceof Error ? reason.message : "Something went wrong";
+}
+
+const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Wed 14" in the team's timezone. */
+export function formatDay(value: string, timezone: string) {
+  const parts = new Intl.DateTimeFormat(undefined, {
+    timeZone: timezone,
+    weekday: "short",
+    day: "numeric"
+  }).formatToParts(new Date(value));
+  const part = (type: string) => parts.find((value) => value.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")}`;
+}
+
+/** "Oct 12 – 18" for an inclusive YYYY-MM-DD range. */
+export function formatPeriod(start: string, end: string) {
+  const from = parseLocalDate(start);
+  const to = parseLocalDate(end);
+  if (!from || !to) return `${start} – ${end}`;
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).formatRange(from, to);
+}
+
+/** "Weekly · Wed, Thu, Fri · 21:00–23:00" */
+export function describeSchedule(schedule: {
+  cadenceDays: number;
+  weekdays: number[];
+  startTime: string;
+  endTime: string;
+}) {
+  const days = [...schedule.weekdays].sort().map((day) => weekdayNames[day]);
+  return `${schedule.cadenceDays === 7 ? "Weekly" : "Every two weeks"} · ${days.join(", ")} · ${schedule.startTime}–${schedule.endTime}`;
 }

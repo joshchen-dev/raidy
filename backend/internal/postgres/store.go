@@ -16,7 +16,7 @@ import (
 var (
 	ErrForbidden = errors.New("forbidden")
 	ErrNotFound  = errors.New("not found")
-	ErrExpired   = errors.New("poll expired")
+	ErrExpired   = errors.New("this raid date has already started or its timetable has closed")
 	// ErrAlreadyPublished rejects a manual publish while a future period is
 	// already open, so repeated clicks cannot skip voting periods.
 	ErrAlreadyPublished = errors.New("the next period is already published; use Republish to restore its message")
@@ -675,7 +675,7 @@ func (s *Store) SetAvailability(ctx context.Context, pollID int64, memberID stri
 
 func (s *Store) SetOccurrenceStatus(ctx context.Context, occurrenceID int64, leaderID, action string, now time.Time) error {
 	if action != "confirm" && action != "cancel" && action != "reopen" {
-		return errors.New("invalid occurrence action")
+		return ValidationError{"invalid occurrence action"}
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

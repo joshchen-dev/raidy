@@ -28,7 +28,7 @@ export function TimezoneCombobox({ value, onChange }: { value: string; onChange:
           role="combobox"
           aria-label="Timezone"
           aria-expanded={open}
-          className="h-11 w-full justify-between font-normal"
+          className="h-10 w-full justify-between font-normal"
         >
           <span className="truncate">{value || "Choose a timezone"}</span>
           <ChevronsUpDown className="text-muted-foreground" />
@@ -73,7 +73,7 @@ export function TimeSelect({
   const options = timeOptions.includes(value) ? timeOptions : [...timeOptions, value].sort();
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-11 w-full" aria-label={label}>
+      <SelectTrigger className="h-10 w-full" aria-label={label}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent position="popper" className="max-h-72">
@@ -97,7 +97,7 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (valu
           type="button"
           variant="outline"
           aria-label="First period start date"
-          className="h-11 w-full justify-start font-normal"
+          className="h-10 w-full justify-start font-normal"
         >
           <CalendarDays className="text-muted-foreground" />
           {selected ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(selected) : "Choose a date"}

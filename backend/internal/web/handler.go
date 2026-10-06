@@ -73,6 +73,7 @@ func (h *Handler) Routes(health http.Handler) http.Handler {
 	root.Handle("/readyz", health)
 	root.HandleFunc("GET /api/auth/login", h.login)
 	root.HandleFunc("GET /api/auth/callback", h.callback)
+	root.HandleFunc("GET /api/config", h.appConfig)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/auth/me", h.me)
@@ -91,9 +92,23 @@ func (h *Handler) Routes(health http.Handler) http.Handler {
 	api.HandleFunc("POST /api/teams/{teamID}/publish", h.publish)
 	api.HandleFunc("POST /api/teams/{teamID}/republish", h.republish)
 	api.HandleFunc("GET /api/teams/{teamID}/polls", h.openPolls)
+	api.HandleFunc("POST /api/occurrences/{occurrenceID}/status", h.occurrenceStatus)
 	root.Handle("/api/", h.requireSession(api))
 	root.HandleFunc("/", h.serveApp)
 	return root
+}
+
+// botPermissions grants View Channels, Send Messages, Embed Links, and Read Message History.
+const botPermissions = "84992"
+
+func (h *Handler) appConfig(w http.ResponseWriter, _ *http.Request) {
+	invite := url.Values{
+		"client_id":        {h.config.ClientID},
+		"permissions":      {botPermissions},
+		"integration_type": {"0"},
+		"scope":            {"bot applications.commands"},
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"inviteUrl": "https://discord.com/oauth2/authorize?" + invite.Encode()})
 }
 
 func (h *Handler) requireSession(next http.Handler) http.Handler {
@@ -174,7 +189,7 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusForbidden
 	case errors.Is(err, postgres.ErrNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, postgres.ErrAlreadyPublished), errors.Is(err, postgres.ErrDuplicateTeam):
+	case errors.Is(err, postgres.ErrAlreadyPublished), errors.Is(err, postgres.ErrDuplicateTeam), errors.Is(err, postgres.ErrExpired):
 		status = http.StatusConflict
 	}
 	if status == http.StatusGatewayTimeout {
