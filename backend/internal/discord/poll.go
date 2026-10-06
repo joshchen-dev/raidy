@@ -209,9 +209,7 @@ func (b *Bot) saveAvailability(ctx context.Context, i *discordgo.Interaction, po
 	if err := b.update(i, "Availability saved.", nil); err != nil {
 		return err
 	}
-	if err := b.editPoll(ctx, pollID, true); err != nil {
-		b.Log.Error("poll refresh failed", "poll_id", pollID, "error", err)
-	}
+	b.refresher.queue(pollID)
 	return nil
 }
 
@@ -276,9 +274,7 @@ func (b *Bot) changeOccurrence(ctx context.Context, i *discordgo.Interaction, oc
 	if err := b.update(i, "Raid date updated.", nil); err != nil {
 		return err
 	}
-	if err := b.editPoll(ctx, pollID, true); err != nil {
-		b.Log.Error("poll refresh failed", "poll_id", pollID, "occurrence_id", occurrenceID, "error", err)
-	}
+	b.refresher.queue(pollID)
 	return nil
 }
 
@@ -292,9 +288,7 @@ func (b *Bot) ChangeOccurrence(ctx context.Context, occurrenceID int64, leaderID
 	if err != nil {
 		return err
 	}
-	if err := b.editPoll(ctx, pollID, true); err != nil {
-		b.Log.Error("poll refresh failed", "poll_id", pollID, "occurrence_id", occurrenceID, "error", err)
-	}
+	b.refresher.queue(pollID)
 	return nil
 }
 

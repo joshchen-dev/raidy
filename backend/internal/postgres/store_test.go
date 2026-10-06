@@ -68,6 +68,36 @@ func TestForcedPublishDoesNotSkipPeriods(t *testing.T) {
 	}
 }
 
+func TestPublishedOpenPollIDs(t *testing.T) {
+	store, pool := openTestStore(t)
+	ctx := context.Background()
+	created, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "The Echo", "Asia/Tokyo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published, unpublished, closed int64
+	for _, row := range []struct {
+		id      *int64
+		start   string
+		message string
+		closed  bool
+	}{{&published, "2026-10-05", "m1", false}, {&unpublished, "2026-10-12", "", false}, {&closed, "2026-09-28", "m0", true}} {
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO schedule_polls (team_id, period_start, period_end, channel_id, message_id, closed_at)
+			VALUES ($1, $2::date, $2::date + 7, 'channel', $3, CASE WHEN $4 THEN now() END) RETURNING id`,
+			created.ID, row.start, row.message, row.closed).Scan(row.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids, err := store.PublishedOpenPollIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != published {
+		t.Fatalf("PublishedOpenPollIDs() = %v, want only %d (unpublished %d and closed %d excluded)", ids, published, unpublished, closed)
+	}
+}
+
 func TestCatchUpSkipsElapsedPeriods(t *testing.T) {
 	store, pool := openTestStore(t)
 	ctx := context.Background()
