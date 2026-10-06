@@ -9,6 +9,8 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     trace: "retain-on-failure",
+    // The fixtures' team is in Tokyo; individual tests move the viewer elsewhere.
+    timezoneId: "Asia/Tokyo",
     launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined }
   },
   projects: [

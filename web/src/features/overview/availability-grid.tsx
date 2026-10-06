@@ -3,7 +3,7 @@ import { type Member, type Occurrence, type Poll } from "@/api";
 import { Avatar, StatusChip } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatDay, formatTime } from "@/lib/format";
+import { browserTimezone, formatDay, formatTime, teamTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type OccurrenceAction = "confirm" | "cancel" | "reopen";
@@ -77,6 +77,27 @@ function ActionsMenu({
   );
 }
 
+function TeamTime({
+  value,
+  teamTimezone,
+  viewerTimezone
+}: {
+  value: string;
+  teamTimezone: string;
+  viewerTimezone: string;
+}) {
+  const label = teamTime(value, teamTimezone, viewerTimezone);
+  if (!label) return null;
+  return (
+    <div
+      className="mt-0.5 text-[11px] whitespace-nowrap text-muted-foreground/80"
+      title={`Team time (${teamTimezone})`}
+    >
+      {label}
+    </div>
+  );
+}
+
 export function AvailabilityGrid({
   poll,
   members,
@@ -86,7 +107,8 @@ export function AvailabilityGrid({
   onAction,
   currentUserID,
   draft,
-  onToggle
+  onToggle,
+  viewerTimezone = browserTimezone()
 }: {
   poll: Poll;
   members: Member[];
@@ -98,6 +120,8 @@ export function AvailabilityGrid({
   /** Dates the current user marks available while editing; null when not editing. */
   draft?: Set<number> | null;
   onToggle?: (occurrenceID: number) => void;
+  /** Times show in the viewer's timezone, with the team's time beneath when it differs. */
+  viewerTimezone?: string;
 }) {
   const occurrences = poll.occurrences;
   const memberIDs = Array.from(
@@ -128,10 +152,11 @@ export function AvailabilityGrid({
                 scope="col"
                 className="min-w-20 px-2 py-3 text-center align-top font-normal sm:min-w-24"
               >
-                <div className="font-medium">{formatDay(occurrence.startsAt, poll.timezone)}</div>
+                <div className="font-medium">{formatDay(occurrence.startsAt, viewerTimezone)}</div>
                 <div className="font-mono text-xs text-muted-foreground">
-                  {formatTime(occurrence.startsAt, poll.timezone)}
+                  {formatTime(occurrence.startsAt, viewerTimezone)}
                 </div>
+                <TeamTime value={occurrence.startsAt} teamTimezone={poll.timezone} viewerTimezone={viewerTimezone} />
               </th>
             ))}
           </tr>
@@ -152,7 +177,7 @@ export function AvailabilityGrid({
                     <button
                       type="button"
                       aria-pressed={draft.has(occurrence.id)}
-                      aria-label={`Available on ${formatDay(occurrence.startsAt, poll.timezone)}`}
+                      aria-label={`Available on ${formatDay(occurrence.startsAt, viewerTimezone)}`}
                       className="rounded ring-2 ring-primary/40 focus-visible:ring-primary"
                       onClick={() => onToggle?.(occurrence.id!)}
                     >
@@ -192,7 +217,7 @@ export function AvailabilityGrid({
                     {canManage && occurrence.id && new Date(occurrence.startsAt) > now && (
                       <ActionsMenu
                         occurrence={occurrence}
-                        label={formatDay(occurrence.startsAt, poll.timezone)}
+                        label={formatDay(occurrence.startsAt, viewerTimezone)}
                         busy={busyID === occurrence.id}
                         onAction={(action) => onAction(occurrence, action)}
                       />

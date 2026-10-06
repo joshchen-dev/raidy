@@ -4,7 +4,7 @@
 
 Raidy is a raid scheduling project for Discord statics: the web console is where everyone plans, and Discord carries the announcements. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
-**Status:** `v0.0.13` is an early development snapshot.
+**Status:** `v0.0.14` is an early development snapshot.
 
 ```text
 backend/     Go service, Discord interactions, web API, PostgreSQL migrations
@@ -22,6 +22,7 @@ deployment/  local PostgreSQL and Kubernetes deployment manifests
 - Polls become read-only history when their final occurrence starts.
 - Discord is announcement-only: each period is posted with its dates in every reader's own timezone, live availability counts and status, and an **Open in Raidy** link. The post is edited in place as votes and decisions change.
 - `/raidy` replies privately with a link to your team's page.
+- Raid times on the web show in each viewer's own timezone, with the team's time beneath when it differs; the schedule editor stays in the team's timezone.
 - The responsive console supports persisted light and dark themes.
 
 ## Run locally

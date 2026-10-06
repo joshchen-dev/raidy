@@ -5,7 +5,7 @@ import { LoadingPanel, PageHeader } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AvailabilityGrid, type OccurrenceAction } from "@/features/overview/availability-grid";
-import { describeSchedule, formatDateTime, formatDay, formatPeriod, message } from "@/lib/format";
+import { browserTimezone, describeSchedule, formatDateTime, formatDay, formatPeriod, message } from "@/lib/format";
 
 const actionMessages: Record<OccurrenceAction, string> = {
   confirm: "confirmed",
@@ -58,7 +58,7 @@ export function Overview({
     setBusyID(occurrence.id);
     try {
       await api(`/api/occurrences/${occurrence.id}/status`, { method: "POST", body: JSON.stringify({ action }) });
-      toast.success(`${formatDay(occurrence.startsAt, poll.timezone)} ${actionMessages[action]}`);
+      toast.success(`${formatDay(occurrence.startsAt, browserTimezone())} ${actionMessages[action]}`);
       setReload((value) => value + 1);
     } catch (reason) {
       toast.error(message(reason));
@@ -130,7 +130,7 @@ export function Overview({
 
   const summary = `${describeSchedule(schedule)} · ${schedule.timezone}`;
   const nextPost = schedule.enabled
-    ? `Next timetable posts ${formatDateTime(schedule.nextPublishAt, schedule.timezone)}`
+    ? `Next timetable posts ${formatDateTime(schedule.nextPublishAt, browserTimezone())}`
     : "Automatic posting is paused";
 
   if (!poll) {
