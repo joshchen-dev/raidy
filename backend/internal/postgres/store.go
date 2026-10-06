@@ -263,7 +263,10 @@ func (s *Store) UpdateTeam(ctx context.Context, teamID int64, leaderID, name, ti
 	return tx.Commit(ctx)
 }
 
-func (s *Store) SaveSchedule(ctx context.Context, draft team.ScheduleDraft) error {
+// SaveSchedule stores the team's recurring template. A new raid time also
+// moves upcoming dates in open periods; weekday changes start with the next
+// period because removing a date would discard its votes.
+func (s *Store) SaveSchedule(ctx context.Context, draft team.ScheduleDraft, now time.Time) error {
 	if draft.CadenceDays != 7 && draft.CadenceDays != 14 {
 		return ValidationError{"cadence must be weekly or biweekly"}
 	}
@@ -282,6 +285,10 @@ func (s *Store) SaveSchedule(ctx context.Context, draft team.ScheduleDraft) erro
 	}
 	defer tx.Rollback(ctx)
 	if err := requireLeader(ctx, tx, draft.TeamID, draft.UserID); err != nil {
+		return err
+	}
+	var previousTimezone string
+	if err := tx.QueryRow(ctx, `SELECT timezone FROM teams WHERE id=$1`, draft.TeamID).Scan(&previousTimezone); err != nil {
 		return err
 	}
 	if draft.Timezone != "" {
@@ -313,7 +320,61 @@ func (s *Store) SaveSchedule(ctx context.Context, draft team.ScheduleDraft) erro
 			return err
 		}
 	}
+	if err := moveUpcomingOccurrences(ctx, tx, draft, previousTimezone, now); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
+}
+
+// moveUpcomingOccurrences gives every not-yet-started date in the team's open
+// periods the schedule's raid time on the same local day, keeping its votes.
+func moveUpcomingOccurrences(ctx context.Context, tx pgx.Tx, draft team.ScheduleDraft, previousTimezone string, now time.Time) error {
+	timezone := draft.Timezone
+	if timezone == "" {
+		timezone = previousTimezone
+	}
+	from, err := time.LoadLocation(previousTimezone)
+	if err != nil {
+		return err
+	}
+	to, err := time.LoadLocation(timezone)
+	if err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT o.id, o.starts_at FROM poll_occurrences o
+		JOIN schedule_polls p ON p.id=o.poll_id
+		WHERE p.team_id=$1 AND p.closed_at IS NULL AND o.starts_at>$2`, draft.TeamID, now.UTC())
+	if err != nil {
+		return err
+	}
+	type upcoming struct {
+		id       int64
+		startsAt time.Time
+	}
+	var occurrences []upcoming
+	for rows.Next() {
+		var value upcoming
+		if err := rows.Scan(&value.id, &value.startsAt); err != nil {
+			rows.Close()
+			return err
+		}
+		occurrences = append(occurrences, value)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, occurrence := range occurrences {
+		start, end, err := team.RaidTimes(occurrence.startsAt.In(from), draft.StartMinutes, draft.EndMinutes, to)
+		if err != nil {
+			return ValidationError{err.Error()}
+		}
+		if _, err := tx.Exec(ctx, `UPDATE poll_occurrences SET starts_at=$2, ends_at=$3 WHERE id=$1`, occurrence.id, start, end); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validPublishLead(days int) bool {
@@ -773,7 +834,8 @@ func (s *Store) LatestPoll(ctx context.Context, teamID int64) (team.PollView, er
 
 // OpenPolls returns every voting period that is still open, earliest first, so
 // the current week stays visible after the next week is published early.
-func (s *Store) OpenPolls(ctx context.Context, teamID int64) ([]team.PollView, error) {
+// OpenPollIDs lists the team's open periods, earliest first.
+func (s *Store) OpenPollIDs(ctx context.Context, teamID int64) ([]int64, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id FROM schedule_polls WHERE team_id=$1 AND closed_at IS NULL ORDER BY period_start`, teamID)
 	if err != nil {
 		return nil, err
@@ -788,7 +850,12 @@ func (s *Store) OpenPolls(ctx context.Context, teamID int64) ([]team.PollView, e
 		ids = append(ids, id)
 	}
 	rows.Close()
-	if err := rows.Err(); err != nil {
+	return ids, rows.Err()
+}
+
+func (s *Store) OpenPolls(ctx context.Context, teamID int64) ([]team.PollView, error) {
+	ids, err := s.OpenPollIDs(ctx, teamID)
+	if err != nil {
 		return nil, err
 	}
 	views := make([]team.PollView, 0, len(ids))

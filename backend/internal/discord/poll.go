@@ -67,15 +67,17 @@ func (b *Bot) editPoll(ctx context.Context, pollID int64, active bool) error {
 	return err
 }
 
-func (b *Bot) RefreshTeamPoll(ctx context.Context, teamID int64) error {
-	view, err := b.Store.LatestPoll(ctx, teamID)
-	if errors.Is(err, postgres.ErrNotFound) {
-		return nil
-	}
+// RefreshOpenPolls re-renders every open timetable of a team in the
+// background, after a roster or schedule change.
+func (b *Bot) RefreshOpenPolls(ctx context.Context, teamID int64) error {
+	ids, err := b.Store.OpenPollIDs(ctx, teamID)
 	if err != nil {
 		return err
 	}
-	return b.editPoll(ctx, view.Poll.ID, true)
+	for _, id := range ids {
+		b.refresher.queue(id)
+	}
+	return nil
 }
 
 func renderAnnouncement(view team.PollView, active bool, baseURL string) ([]*discordgo.MessageEmbed, []discordgo.MessageComponent) {

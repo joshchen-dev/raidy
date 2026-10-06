@@ -122,7 +122,7 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	if err := h.bot.RefreshTeamPoll(r.Context(), value.ID); err != nil {
+	if err := h.bot.RefreshOpenPolls(r.Context(), value.ID); err != nil {
 		h.log.Error("poll refresh after roster update failed", "team_id", value.ID, "error", err)
 	}
 	updated, err := h.store.Team(r.Context(), value.ID)
@@ -414,9 +414,12 @@ func (h *Handler) saveSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	draft.ChannelName = channel.Name
-	if err := h.store.SaveSchedule(r.Context(), draft); err != nil {
+	if err := h.store.SaveSchedule(r.Context(), draft, time.Now()); err != nil {
 		h.fail(w, r, err)
 		return
+	}
+	if err := h.bot.RefreshOpenPolls(r.Context(), value.ID); err != nil {
+		h.log.Error("poll refresh after schedule update failed", "team_id", value.ID, "error", err)
 	}
 	saved, err := h.store.Schedule(r.Context(), value.ID)
 	if err != nil {

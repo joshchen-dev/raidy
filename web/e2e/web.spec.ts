@@ -55,6 +55,8 @@ test("schedule edits show an unsaved-changes bar that can be discarded", async (
   await mockSignedInLeader(page);
   await page.goto("/app");
   await page.getByRole("button", { name: "Schedule" }).click();
+  // Saving a new time moves the open period too; the page must say so.
+  await expect(page.getByText(/moves upcoming dates in open periods/)).toBeVisible();
   await expect(page.getByText("You have unsaved changes")).toHaveCount(0);
   await page
     .getByRole("radio", { name: "Mon" })

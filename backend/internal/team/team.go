@@ -128,20 +128,30 @@ func GenerateOccurrences(s Schedule) ([]Occurrence, error) {
 		if !wanted[date.Weekday()] {
 			continue
 		}
-		start := localDateTime(date, s.StartMinutes, loc)
-		if start.Hour()*60+start.Minute() != s.StartMinutes {
-			return nil, fmt.Errorf("%s %s does not exist in %s due to a clock change", date.Format("2006-01-02"), FormatClock(s.StartMinutes), s.Timezone)
+		start, end, err := RaidTimes(date, s.StartMinutes, s.EndMinutes, loc)
+		if err != nil {
+			return nil, err
 		}
-		end := localDateTime(date, s.EndMinutes, loc)
-		if !end.After(start) {
-			end = end.AddDate(0, 0, 1)
-		}
-		if end.Hour()*60+end.Minute() != s.EndMinutes {
-			return nil, fmt.Errorf("end time %s does not exist in %s due to a clock change", FormatClock(s.EndMinutes), s.Timezone)
-		}
-		occurrences = append(occurrences, Occurrence{StartsAt: start.UTC(), EndsAt: end.UTC(), Status: "proposed"})
+		occurrences = append(occurrences, Occurrence{StartsAt: start, EndsAt: end, Status: "proposed"})
 	}
 	return occurrences, nil
+}
+
+// RaidTimes returns a raid's UTC start and end for a local date. A raid whose
+// end time is not after its start time ends the next day.
+func RaidTimes(date time.Time, startMinutes, endMinutes int, loc *time.Location) (time.Time, time.Time, error) {
+	start := localDateTime(date, startMinutes, loc)
+	if start.Hour()*60+start.Minute() != startMinutes {
+		return time.Time{}, time.Time{}, fmt.Errorf("%s %s does not exist in %s due to a clock change", date.Format("2006-01-02"), FormatClock(startMinutes), loc)
+	}
+	end := localDateTime(date, endMinutes, loc)
+	if !end.After(start) {
+		end = end.AddDate(0, 0, 1)
+	}
+	if end.Hour()*60+end.Minute() != endMinutes {
+		return time.Time{}, time.Time{}, fmt.Errorf("end time %s does not exist in %s due to a clock change", FormatClock(endMinutes), loc)
+	}
+	return start.UTC(), end.UTC(), nil
 }
 
 func localDateTime(date time.Time, minutes int, loc *time.Location) time.Time {

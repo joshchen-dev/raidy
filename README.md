@@ -4,7 +4,7 @@
 
 Raidy is a raid scheduling project for Discord statics: the web console is where everyone plans, and Discord carries the announcements. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
-**Status:** `v0.0.14` is an early development snapshot.
+**Status:** `v0.0.15` is an early development snapshot.
 
 ```text
 backend/     Go service, Discord interactions, web API, PostgreSQL migrations
@@ -19,6 +19,7 @@ deployment/  local PostgreSQL and Kubernetes deployment manifests
 - Members mark the dates they can attend on the availability grid; omitted future dates become unavailable.
 - Leaders confirm, cancel, or reopen dates. A confirmed date becomes `Attention required` when availability drops.
 - Active polls follow roster additions and removals immediately; closed poll history stays unchanged.
+- Changing the raid time or timezone moves upcoming dates in open periods to the new time on the same day and keeps their votes; changing raid days applies from the next period.
 - Polls become read-only history when their final occurrence starts.
 - Discord is announcement-only: each period is posted with its dates in every reader's own timezone, live availability counts and status, and an **Open in Raidy** link. The post is edited in place as votes and decisions change.
 - `/raidy` replies privately with a link to your team's page.

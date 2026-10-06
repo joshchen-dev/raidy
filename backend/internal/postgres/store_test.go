@@ -49,7 +49,7 @@ func TestForcedPublishDoesNotSkipPeriods(t *testing.T) {
 		TeamID: created.ID, UserID: "leader", CadenceDays: 7, Weekdays: []time.Weekday{time.Wednesday},
 		StartMinutes: 21 * 60, EndMinutes: 23 * 60, FirstPeriodStart: periodStart,
 		FirstPublishAt: periodStart.Add(-3 * 24 * time.Hour), ChannelID: "channel",
-	}); err != nil {
+	}, now); err != nil {
 		t.Fatal(err)
 	}
 	if _, created, err := store.PublishNext(ctx, created.ID, true, now); err != nil || !created {
@@ -113,7 +113,7 @@ func TestCatchUpSkipsElapsedPeriods(t *testing.T) {
 		TeamID: created.ID, UserID: "leader", CadenceDays: 7, Weekdays: []time.Weekday{time.Wednesday},
 		StartMinutes: 21 * 60, EndMinutes: 23 * 60, FirstPeriodStart: firstPeriod,
 		FirstPublishAt: firstPeriod.Add(-3 * 24 * time.Hour), ChannelID: "channel",
-	}); err != nil {
+	}, firstPeriod); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 29, 12, 0, 0, 0, location)
@@ -199,7 +199,7 @@ func TestOpenPollsListsEveryActivePeriodInOrder(t *testing.T) {
 	if err := store.SaveSchedule(ctx, team.ScheduleDraft{
 		TeamID: created.ID, UserID: "leader", CadenceDays: 7, Weekdays: []time.Weekday{time.Wednesday},
 		StartMinutes: 21 * 60, EndMinutes: 23 * 60, FirstPeriodStart: periodStart, FirstPublishAt: publishAt, ChannelID: "channel",
-	}); err != nil {
+	}, publishAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, created, err := store.PublishNext(ctx, created.ID, false, publishAt); err != nil || !created {
@@ -219,6 +219,71 @@ func TestOpenPollsListsEveryActivePeriodInOrder(t *testing.T) {
 	}
 	if len(views[0].Poll.Occurrences) == 0 {
 		t.Fatal("OpenPolls() must include occurrences")
+	}
+}
+
+// Regression: changing the raid time only affected future periods, so the
+// open period kept showing the old time.
+func TestSavingScheduleMovesUpcomingDatesInOpenPeriods(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	created, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "The Echo", "Asia/Tokyo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokyo, _ := time.LoadLocation("Asia/Tokyo")
+	periodStart := time.Date(2026, 10, 5, 0, 0, 0, 0, tokyo)
+	publishAt := periodStart.Add(-3 * 24 * time.Hour)
+	draft := team.ScheduleDraft{
+		TeamID: created.ID, UserID: "leader", CadenceDays: 7, Weekdays: []time.Weekday{time.Monday, time.Wednesday},
+		StartMinutes: 21 * 60, EndMinutes: 23 * 60, FirstPeriodStart: periodStart, FirstPublishAt: publishAt, ChannelID: "channel",
+	}
+	if err := store.SaveSchedule(ctx, draft, publishAt); err != nil {
+		t.Fatal(err)
+	}
+	poll, _, err := store.PublishNext(ctx, created.ID, false, publishAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	monday, wednesday := poll.Occurrences[0], poll.Occurrences[1]
+	if err := store.SetAvailability(ctx, poll.ID, "leader", []int64{monday.ID, wednesday.ID}, publishAt); err != nil {
+		t.Fatal(err)
+	}
+
+	// Monday's raid has started; the leader moves the raid to 20:00–22:30
+	// and drops Monday from the template.
+	now := time.Date(2026, 10, 5, 21, 30, 0, 0, tokyo)
+	draft.Weekdays = []time.Weekday{time.Wednesday}
+	draft.StartMinutes, draft.EndMinutes = 20*60, 22*60+30
+	draft.FirstPeriodStart = periodStart.AddDate(0, 0, 7)
+	draft.FirstPublishAt = publishAt.AddDate(0, 0, 7)
+	if err := store.SaveSchedule(ctx, draft, now); err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := store.PollView(ctx, poll.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Poll.Occurrences) != 2 {
+		t.Fatalf("occurrences = %d, want the open period's dates kept", len(view.Poll.Occurrences))
+	}
+	byID := map[int64]team.Occurrence{}
+	for _, occurrence := range view.Poll.Occurrences {
+		byID[occurrence.ID] = occurrence
+	}
+	if got := byID[monday.ID].StartsAt.In(tokyo).Format("Mon 15:04"); got != "Mon 21:00" {
+		t.Fatalf("started Monday moved to %s, want it unchanged", got)
+	}
+	moved := byID[wednesday.ID]
+	if got := moved.StartsAt.In(tokyo).Format("2006-01-02 15:04"); got != "2026-10-07 20:00" {
+		t.Fatalf("Wednesday starts %s, want 2026-10-07 20:00", got)
+	}
+	if got := moved.EndsAt.In(tokyo).Format("2006-01-02 15:04"); got != "2026-10-07 22:30" {
+		t.Fatalf("Wednesday ends %s, want 2026-10-07 22:30", got)
+	}
+	if !view.Availability[wednesday.ID]["leader"] {
+		t.Fatal("moving a date must keep its votes")
 	}
 }
 
@@ -250,7 +315,7 @@ func TestTeamErrorsAreTyped(t *testing.T) {
 	if _, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "Too Big", "Asia/Tokyo", []string{"1", "2", "3", "4", "5", "6", "7", "8"}); !errors.As(err, &validation) {
 		t.Fatalf("oversized roster error = %v, want ValidationError", err)
 	}
-	if err := store.SaveSchedule(ctx, team.ScheduleDraft{TeamID: second.ID, UserID: "leader", CadenceDays: 3}); !errors.As(err, &validation) {
+	if err := store.SaveSchedule(ctx, team.ScheduleDraft{TeamID: second.ID, UserID: "leader", CadenceDays: 3}, time.Now()); !errors.As(err, &validation) {
 		t.Fatalf("invalid cadence error = %v, want ValidationError", err)
 	}
 }
@@ -281,7 +346,7 @@ func TestSchedulingLifecycle(t *testing.T) {
 		ChannelID:        "channel",
 		ChannelName:      "raid-schedule",
 	}
-	if err := store.SaveSchedule(ctx, draft); err != nil {
+	if err := store.SaveSchedule(ctx, draft, publishAt); err != nil {
 		t.Fatal(err)
 	}
 	savedSchedule, err := store.Schedule(ctx, created.ID)
@@ -303,7 +368,7 @@ func TestSchedulingLifecycle(t *testing.T) {
 	if _, generated, err := store.PublishNext(ctx, created.ID, false, publishAt); err != nil || generated {
 		t.Fatalf("second PublishNext() generated=%v err=%v", generated, err)
 	}
-	if err := store.SaveSchedule(ctx, draft); err != nil {
+	if err := store.SaveSchedule(ctx, draft, publishAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, advanced, err := store.PublishNext(ctx, created.ID, false, publishAt); err != nil || !advanced {
