@@ -6,6 +6,7 @@ import (
 )
 
 func (b *Bot) RunScheduler(ctx context.Context) {
+	b.refreshOpenPolls(ctx)
 	b.runSchedulerTick(ctx)
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -54,5 +55,19 @@ func (b *Bot) runSchedulerTick(ctx context.Context) {
 	}
 	if err := b.publishUnpublished(ctx); err != nil {
 		b.Log.Error("poll publication pass failed", "error", err)
+	}
+}
+
+// refreshOpenPolls re-renders every published, open timetable at startup. A
+// background refresh lost to a crash or restart leaves only a stale Discord
+// message, never stale data, so re-rendering from PostgreSQL repairs it.
+func (b *Bot) refreshOpenPolls(ctx context.Context) {
+	ids, err := b.Store.PublishedOpenPollIDs(ctx)
+	if err != nil {
+		b.Log.Error("startup poll refresh query failed", "error", err)
+		return
+	}
+	for _, id := range ids {
+		b.refresher.queue(id)
 	}
 }

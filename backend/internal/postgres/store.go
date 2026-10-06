@@ -884,3 +884,22 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM web_sessions WHERE token_hash=$1`, tokenHash)
 	return err
 }
+
+// PublishedOpenPollIDs lists open polls that have a Discord message, so their
+// messages can be re-rendered after a restart dropped a pending refresh.
+func (s *Store) PublishedOpenPollIDs(ctx context.Context) ([]int64, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM schedule_polls WHERE closed_at IS NULL AND message_id <> '' ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
