@@ -23,10 +23,15 @@ type Bot struct {
 	Log     *slog.Logger
 	// ponytail: process-local publication lock matches the one-replica MVP; use DB leasing before adding replicas.
 	publishMu sync.Mutex
+	refresher *pollRefresher
 }
 
 func New(session *discordgo.Session, store *postgres.Store, log *slog.Logger) *Bot {
-	return &Bot{Session: session, Store: store, Drafts: team.NewDrafts(), Log: log}
+	b := &Bot{Session: session, Store: store, Drafts: team.NewDrafts(), Log: log}
+	b.refresher = newPollRefresher(refreshDelay, log, func(ctx context.Context, pollID int64) error {
+		return b.editPoll(ctx, pollID, true)
+	})
+	return b
 }
 
 func Commands() []*discordgo.ApplicationCommand {
