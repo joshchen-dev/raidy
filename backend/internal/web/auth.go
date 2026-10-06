@@ -1,15 +1,20 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/joshchen-dev/raidy/internal/postgres"
 )
 
 const (
@@ -56,14 +61,22 @@ func (s session) guildName(id string) string {
 	return ""
 }
 
-type sessionStore struct {
+// sessionStore keeps signed-in web sessions keyed by an opaque cookie token.
+type sessionStore interface {
+	put(ctx context.Context, value session) (string, error)
+	get(ctx context.Context, token string) (session, bool)
+	delete(ctx context.Context, token string)
+}
+
+// memorySessions is the process-local store used by tests.
+type memorySessions struct {
 	mu     sync.Mutex
 	values map[string]session
 }
 
-func newSessionStore() *sessionStore { return &sessionStore{values: make(map[string]session)} }
+func newMemorySessions() *memorySessions { return &memorySessions{values: make(map[string]session)} }
 
-func (s *sessionStore) put(value session) (string, error) {
+func (s *memorySessions) put(_ context.Context, value session) (string, error) {
 	token, err := randomToken()
 	if err != nil {
 		return "", err
@@ -79,7 +92,7 @@ func (s *sessionStore) put(value session) (string, error) {
 	return token, nil
 }
 
-func (s *sessionStore) get(token string) (session, bool) {
+func (s *memorySessions) get(_ context.Context, token string) (session, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value, ok := s.values[token]
@@ -90,10 +103,56 @@ func (s *sessionStore) get(token string) (session, bool) {
 	return value, true
 }
 
-func (s *sessionStore) delete(token string) {
+func (s *memorySessions) delete(_ context.Context, token string) {
 	s.mu.Lock()
 	delete(s.values, token)
 	s.mu.Unlock()
+}
+
+// dbSessions persists sessions in PostgreSQL so restarts and deploys keep
+// people signed in. Only a SHA-256 hash of each token is stored.
+type dbSessions struct {
+	store *postgres.Store
+	log   *slog.Logger
+}
+
+func tokenHash(token string) []byte {
+	sum := sha256.Sum256([]byte(token))
+	return sum[:]
+}
+
+func (s dbSessions) put(ctx context.Context, value session) (string, error) {
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return token, s.store.PutSession(ctx, tokenHash(token), data, value.ExpiresAt, time.Now())
+}
+
+func (s dbSessions) get(ctx context.Context, token string) (session, bool) {
+	data, err := s.store.Session(ctx, tokenHash(token), time.Now())
+	if err != nil {
+		if !errors.Is(err, postgres.ErrNotFound) {
+			s.log.Error("session lookup failed", "error", err)
+		}
+		return session{}, false
+	}
+	var value session
+	if err := json.Unmarshal(data, &value); err != nil {
+		s.log.Error("stored session is unreadable", "error", err)
+		return session{}, false
+	}
+	return value, true
+}
+
+func (s dbSessions) delete(ctx context.Context, token string) {
+	if err := s.store.DeleteSession(ctx, tokenHash(token)); err != nil {
+		s.log.Error("session delete failed", "error", err)
+	}
 }
 
 func randomToken() (string, error) {
@@ -143,7 +202,7 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	sessionToken, err := h.sessions.put(session{User: current, Guilds: guilds, ExpiresAt: time.Now().Add(24 * time.Hour)})
+	sessionToken, err := h.sessions.put(r.Context(), session{User: current, Guilds: guilds, ExpiresAt: time.Now().Add(24 * time.Hour)})
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -237,7 +296,7 @@ func (h *Handler) guilds(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookie); err == nil {
-		h.sessions.delete(cookie.Value)
+		h.sessions.delete(r.Context(), cookie.Value)
 	}
 	h.clearCookie(w, sessionCookie)
 	w.WriteHeader(http.StatusNoContent)

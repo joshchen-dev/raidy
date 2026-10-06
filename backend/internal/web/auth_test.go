@@ -2,15 +2,20 @@ package web
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 
+	"github.com/joshchen-dev/raidy/internal/postgres"
 	"github.com/joshchen-dev/raidy/internal/team"
+	"github.com/joshchen-dev/raidy/migrations"
 )
 
 func TestLoginSetsOAuthState(t *testing.T) {
@@ -40,26 +45,64 @@ func TestLoginSetsOAuthState(t *testing.T) {
 }
 
 func TestSessionLifecycle(t *testing.T) {
-	store := newSessionStore()
-	token, err := store.put(session{User: user{ID: "user"}, ExpiresAt: time.Now().Add(time.Hour)})
+	testSessionStore(t, newMemorySessions())
+}
+
+func TestDatabaseSessionLifecycle(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	if err := migrations.Up(ctx, databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	store, err := postgres.Open(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value, ok := store.get(token); !ok || value.User.ID != "user" {
+	t.Cleanup(store.Close)
+	sessions := dbSessions{store: store, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	testSessionStore(t, sessions)
+	// A session must survive a new store instance, as after a restart.
+	token, err := sessions.put(ctx, session{User: user{ID: "restart"}, Guilds: []guild{{ID: "g", Name: "Guild"}}, ExpiresAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := dbSessions{store: store, log: sessions.log}
+	if value, ok := restarted.get(ctx, token); !ok || value.User.ID != "restart" || value.guildName("g") != "Guild" {
+		t.Fatalf("session after restart = %+v, ok=%v", value, ok)
+	}
+}
+
+func testSessionStore(t *testing.T, store sessionStore) {
+	t.Helper()
+	ctx := context.Background()
+	token, err := store.put(ctx, session{User: user{ID: "user"}, ExpiresAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := store.get(ctx, token); !ok || value.User.ID != "user" {
 		t.Fatalf("session = %+v, ok=%v", value, ok)
 	}
-	store.delete(token)
-	if _, ok := store.get(token); ok {
+	store.delete(ctx, token)
+	if _, ok := store.get(ctx, token); ok {
 		t.Fatal("deleted session remained valid")
 	}
-	store.values["expired"] = session{ExpiresAt: time.Now().Add(-time.Second)}
-	if _, ok := store.get("expired"); ok {
+	expired, err := store.put(ctx, session{ExpiresAt: time.Now().Add(-time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.get(ctx, expired); ok {
 		t.Fatal("expired session remained valid")
+	}
+	if _, ok := store.get(ctx, "unknown-token"); ok {
+		t.Fatal("unknown token was accepted")
 	}
 }
 
 func TestRequireSessionAndOrigin(t *testing.T) {
-	h := &Handler{origin: "http://localhost:5173", sessions: newSessionStore()}
+	h := &Handler{origin: "http://localhost:5173", sessions: newMemorySessions()}
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	protected := h.requireSession(next)
 
@@ -70,7 +113,7 @@ func TestRequireSessionAndOrigin(t *testing.T) {
 		t.Fatalf("unauthenticated status = %d", response.Code)
 	}
 
-	token, _ := h.sessions.put(session{ExpiresAt: time.Now().Add(time.Hour)})
+	token, _ := h.sessions.put(context.Background(), session{ExpiresAt: time.Now().Add(time.Hour)})
 	request = httptest.NewRequest(http.MethodPost, "/api/teams", nil)
 	request.Header.Set("Origin", "https://attacker.example")
 	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})

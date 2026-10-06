@@ -851,3 +851,28 @@ func requireLeader(ctx context.Context, tx pgx.Tx, teamID int64, leaderID string
 	}
 	return nil
 }
+
+// PutSession stores a web session under the hash of its token and prunes
+// sessions that have already expired.
+func (s *Store) PutSession(ctx context.Context, tokenHash, data []byte, expiresAt, now time.Time) error {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM web_sessions WHERE expires_at <= $1`, now.UTC()); err != nil {
+		return err
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO web_sessions (token_hash, data, expires_at) VALUES ($1, $2, $3)`, tokenHash, data, expiresAt.UTC())
+	return err
+}
+
+// Session returns the stored session data, or ErrNotFound when it is missing or expired.
+func (s *Store) Session(ctx context.Context, tokenHash []byte, now time.Time) ([]byte, error) {
+	var data []byte
+	err := s.pool.QueryRow(ctx, `SELECT data FROM web_sessions WHERE token_hash=$1 AND expires_at > $2`, tokenHash, now.UTC()).Scan(&data)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return data, err
+}
+
+func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM web_sessions WHERE token_hash=$1`, tokenHash)
+	return err
+}
