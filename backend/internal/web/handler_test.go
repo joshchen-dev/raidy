@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/joshchen-dev/raidy/internal/postgres"
@@ -64,5 +65,35 @@ func TestPollJSONCountsVotesPerOccurrence(t *testing.T) {
 	occurrence := got.Occurrences[0]
 	if occurrence.Available != 1 || occurrence.Unavailable != 1 || occurrence.Pending != 1 || len(occurrence.Votes) != 3 {
 		t.Fatalf("occurrence counts = %+v", occurrence)
+	}
+}
+
+type countingTransport struct{ calls int }
+
+func (c *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	c.calls++
+	return nil, errors.New("network disabled in tests")
+}
+
+func TestTeamResponseUsesCachedMembers(t *testing.T) {
+	session, err := discordgo.New("Bot test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &countingTransport{}
+	session.Client = &http.Client{Transport: transport}
+	session.State.User = &discordgo.User{ID: "bot"}
+	if err := session.State.GuildAdd(&discordgo.Guild{ID: "guild", Members: []*discordgo.Member{
+		{GuildID: "guild", Nick: "Alice", User: &discordgo.User{ID: "a", Username: "alice"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{discord: session}
+	response := h.teamResponse(context.Background(), team.Team{ID: 1, GuildID: "guild", LeaderID: "a", MemberIDs: []string{"a", "missing"}}, "a")
+	if transport.calls != 1 {
+		t.Fatalf("REST calls = %d, want 1 (only the uncached member)", transport.calls)
+	}
+	if response.Members[0].Name != "Alice" || response.Members[1].Name != "missing" {
+		t.Fatalf("members = %+v", response.Members)
 	}
 }

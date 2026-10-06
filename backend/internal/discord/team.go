@@ -115,8 +115,8 @@ func (b *Bot) saveTeamTimezone(i *discordgo.Interaction, token, timezone string,
 	return b.ephemeral(i, content, rosterComponents(token, nil))
 }
 
-func (b *Bot) openTeamManage(i *discordgo.Interaction) error {
-	teams, err := b.Store.TeamsLedBy(context.Background(), i.GuildID, userID(i))
+func (b *Bot) openTeamManage(ctx context.Context, i *discordgo.Interaction) error {
+	teams, err := b.Store.TeamsLedBy(ctx, i.GuildID, userID(i))
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (b *Bot) openTeamManage(i *discordgo.Interaction) error {
 	return b.ephemeral(i, "Choose the team to manage.", components)
 }
 
-func (b *Bot) pickManagedTeam(i *discordgo.Interaction, values []string) error {
+func (b *Bot) pickManagedTeam(ctx context.Context, i *discordgo.Interaction, values []string) error {
 	if len(values) != 1 {
 		return errors.New("choose one team")
 	}
@@ -140,7 +140,7 @@ func (b *Bot) pickManagedTeam(i *discordgo.Interaction, values []string) error {
 	if err != nil {
 		return errors.New("invalid team")
 	}
-	value, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), id)
+	value, err := b.ownsTeam(ctx, i.GuildID, userID(i), id)
 	if err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func uniqueOthers(values []string, leaderID string) []string {
 	return result
 }
 
-func (b *Bot) commitTeam(i *discordgo.Interaction, token string) error {
+func (b *Bot) commitTeam(ctx context.Context, i *discordgo.Interaction, token string) error {
 	draft, err := b.Drafts.Team(token, i.GuildID, userID(i))
 	if err != nil {
 		return err
@@ -232,16 +232,16 @@ func (b *Bot) commitTeam(i *discordgo.Interaction, token string) error {
 		if guildErr != nil {
 			return guildErr
 		}
-		created, err := b.Store.CreateTeam(context.Background(), draft.GuildID, guild.Name, draft.UserID, draft.Name, draft.Timezone, draft.MemberIDs)
+		created, err := b.Store.CreateTeam(ctx, draft.GuildID, guild.Name, draft.UserID, draft.Name, draft.Timezone, draft.MemberIDs)
 		if err != nil {
 			return err
 		}
 		draft.TeamID = created.ID
 	} else {
-		if err := b.Store.ReplaceRoster(context.Background(), draft.TeamID, draft.UserID, draft.MemberIDs); err != nil {
+		if err := b.Store.ReplaceRoster(ctx, draft.TeamID, draft.UserID, draft.MemberIDs); err != nil {
 			return err
 		}
-		if err := b.RefreshTeamPoll(context.Background(), draft.TeamID); err != nil {
+		if err := b.RefreshTeamPoll(ctx, draft.TeamID); err != nil {
 			b.Log.Error("poll refresh after roster update failed", "team_id", draft.TeamID, "error", err)
 		}
 	}
@@ -249,11 +249,11 @@ func (b *Bot) commitTeam(i *discordgo.Interaction, token string) error {
 	return b.update(i, "Saved **"+draft.Name+"**.", nil)
 }
 
-func (b *Bot) confirmDeleteTeam(i *discordgo.Interaction, teamID int64) error {
+func (b *Bot) confirmDeleteTeam(ctx context.Context, i *discordgo.Interaction, teamID int64) error {
 	if err := invalidID(teamID); err != nil {
 		return err
 	}
-	value, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), teamID)
+	value, err := b.ownsTeam(ctx, i.GuildID, userID(i), teamID)
 	if err != nil {
 		return err
 	}
@@ -263,14 +263,14 @@ func (b *Bot) confirmDeleteTeam(i *discordgo.Interaction, teamID int64) error {
 	return b.update(i, "Delete **"+value.Name+"** and all of its timetable history? This cannot be undone.", components)
 }
 
-func (b *Bot) deleteTeam(i *discordgo.Interaction, teamID int64) error {
+func (b *Bot) deleteTeam(ctx context.Context, i *discordgo.Interaction, teamID int64) error {
 	if err := invalidID(teamID); err != nil {
 		return err
 	}
-	if _, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), teamID); err != nil {
+	if _, err := b.ownsTeam(ctx, i.GuildID, userID(i), teamID); err != nil {
 		return err
 	}
-	if err := b.Store.DeleteTeam(context.Background(), teamID, userID(i)); err != nil {
+	if err := b.Store.DeleteTeam(ctx, teamID, userID(i)); err != nil {
 		return err
 	}
 	return b.update(i, "Team and stored timetable data deleted.", nil)

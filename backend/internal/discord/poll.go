@@ -152,11 +152,11 @@ func statusLabel(status string) string {
 	return strings.ToUpper(status[:1]) + status[1:]
 }
 
-func (b *Bot) openAvailability(i *discordgo.Interaction, pollID int64) error {
+func (b *Bot) openAvailability(ctx context.Context, i *discordgo.Interaction, pollID int64) error {
 	if err := invalidID(pollID); err != nil {
 		return err
 	}
-	view, err := b.Store.PollView(context.Background(), pollID)
+	view, err := b.Store.PollView(ctx, pollID)
 	if err != nil {
 		return err
 	}
@@ -195,7 +195,7 @@ func (b *Bot) openAvailability(i *discordgo.Interaction, pollID int64) error {
 	return b.ephemeral(i, "Selected dates become Available; every omitted date becomes Unavailable.", components)
 }
 
-func (b *Bot) saveAvailability(i *discordgo.Interaction, pollID int64, values []string) error {
+func (b *Bot) saveAvailability(ctx context.Context, i *discordgo.Interaction, pollID int64, values []string) error {
 	if err := invalidID(pollID); err != nil {
 		return err
 	}
@@ -203,23 +203,23 @@ func (b *Bot) saveAvailability(i *discordgo.Interaction, pollID int64, values []
 	if len(ids) != len(values) {
 		return errors.New("invalid occurrence")
 	}
-	if err := b.Store.SetAvailability(context.Background(), pollID, userID(i), ids, now()); err != nil {
+	if err := b.Store.SetAvailability(ctx, pollID, userID(i), ids, now()); err != nil {
 		return err
 	}
 	if err := b.update(i, "Availability saved.", nil); err != nil {
 		return err
 	}
-	if err := b.editPoll(context.Background(), pollID, true); err != nil {
+	if err := b.editPoll(ctx, pollID, true); err != nil {
 		b.Log.Error("poll refresh failed", "poll_id", pollID, "error", err)
 	}
 	return nil
 }
 
-func (b *Bot) openPollManage(i *discordgo.Interaction, pollID int64) error {
+func (b *Bot) openPollManage(ctx context.Context, i *discordgo.Interaction, pollID int64) error {
 	if err := invalidID(pollID); err != nil {
 		return err
 	}
-	view, err := b.Store.PollView(context.Background(), pollID)
+	view, err := b.Store.PollView(ctx, pollID)
 	if err != nil {
 		return err
 	}
@@ -262,21 +262,21 @@ func (b *Bot) selectOccurrence(i *discordgo.Interaction, ids []int64) error {
 	return b.update(i, "Choose the new state for this raid date.", components)
 }
 
-func (b *Bot) changeOccurrence(i *discordgo.Interaction, occurrenceID int64, action string) error {
+func (b *Bot) changeOccurrence(ctx context.Context, i *discordgo.Interaction, occurrenceID int64, action string) error {
 	if err := invalidID(occurrenceID); err != nil {
 		return err
 	}
-	if err := b.Store.SetOccurrenceStatus(context.Background(), occurrenceID, userID(i), action, now()); err != nil {
+	if err := b.Store.SetOccurrenceStatus(ctx, occurrenceID, userID(i), action, now()); err != nil {
 		return err
 	}
-	pollID, err := b.Store.PollIDForOccurrence(context.Background(), occurrenceID)
+	pollID, err := b.Store.PollIDForOccurrence(ctx, occurrenceID)
 	if err != nil {
 		return err
 	}
 	if err := b.update(i, "Raid date updated.", nil); err != nil {
 		return err
 	}
-	if err := b.editPoll(context.Background(), pollID, true); err != nil {
+	if err := b.editPoll(ctx, pollID, true); err != nil {
 		b.Log.Error("poll refresh failed", "poll_id", pollID, "occurrence_id", occurrenceID, "error", err)
 	}
 	return nil

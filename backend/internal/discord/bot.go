@@ -48,19 +48,25 @@ func Commands() []*discordgo.ApplicationCommand {
 	}
 }
 
+// interactionTimeout bounds the database and Discord work done for one
+// interaction so a hung dependency cannot pin the handler goroutine forever.
+const interactionTimeout = 10 * time.Second
+
 func (b *Bot) Handle(_ *discordgo.Session, event *discordgo.InteractionCreate) {
 	if event.GuildID == "" {
 		b.respondError(event.Interaction, errors.New("Raidy commands are only available inside a server"))
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), interactionTimeout)
+	defer cancel()
 	var err error
 	switch event.Type {
 	case discordgo.InteractionApplicationCommand:
-		err = b.handleCommand(event.Interaction)
+		err = b.handleCommand(ctx, event.Interaction)
 	case discordgo.InteractionModalSubmit:
-		err = b.handleModal(event.Interaction)
+		err = b.handleModal(ctx, event.Interaction)
 	case discordgo.InteractionMessageComponent:
-		err = b.handleComponent(event.Interaction)
+		err = b.handleComponent(ctx, event.Interaction)
 	}
 	if err != nil {
 		b.Log.Error("interaction failed", "type", event.Type.String(), "user_id", userID(event.Interaction), "error", err)
@@ -68,7 +74,7 @@ func (b *Bot) Handle(_ *discordgo.Session, event *discordgo.InteractionCreate) {
 	}
 }
 
-func (b *Bot) handleCommand(i *discordgo.Interaction) error {
+func (b *Bot) handleCommand(ctx context.Context, i *discordgo.Interaction) error {
 	data := i.ApplicationCommandData()
 	if len(data.Options) != 1 {
 		return errors.New("choose a subcommand")
@@ -78,17 +84,17 @@ func (b *Bot) handleCommand(i *discordgo.Interaction) error {
 	case "team:setup":
 		return b.openTeamSetup(i)
 	case "team:manage":
-		return b.openTeamManage(i)
+		return b.openTeamManage(ctx, i)
 	case "schedule:setup":
-		return b.openScheduleSetup(i)
+		return b.openScheduleSetup(ctx, i)
 	case "schedule:manage":
-		return b.openScheduleManage(i)
+		return b.openScheduleManage(ctx, i)
 	default:
 		return errors.New("unknown command")
 	}
 }
 
-func (b *Bot) handleModal(i *discordgo.Interaction) error {
+func (b *Bot) handleModal(ctx context.Context, i *discordgo.Interaction) error {
 	data := i.ModalSubmitData()
 	switch {
 	case data.CustomID == "team_setup":
@@ -100,7 +106,7 @@ func (b *Bot) handleModal(i *discordgo.Interaction) error {
 	}
 }
 
-func (b *Bot) handleComponent(i *discordgo.Interaction) error {
+func (b *Bot) handleComponent(ctx context.Context, i *discordgo.Interaction) error {
 	data := i.MessageComponentData()
 	parts := strings.Split(data.CustomID, ":")
 	if len(parts) == 0 {
@@ -116,18 +122,18 @@ func (b *Bot) handleComponent(i *discordgo.Interaction) error {
 	case "team_roster_empty":
 		return b.selectTeamRoster(i, part(parts, 1), nil)
 	case "team_commit":
-		return b.commitTeam(i, part(parts, 1))
+		return b.commitTeam(ctx, i, part(parts, 1))
 	case "team_cancel":
 		b.Drafts.DeleteTeam(part(parts, 1))
 		return b.update(i, "Setup cancelled.", nil)
 	case "team_manage_pick":
-		return b.pickManagedTeam(i, data.Values)
+		return b.pickManagedTeam(ctx, i, data.Values)
 	case "team_delete":
-		return b.confirmDeleteTeam(i, partInt64(parts, 1))
+		return b.confirmDeleteTeam(ctx, i, partInt64(parts, 1))
 	case "team_delete_confirm":
-		return b.deleteTeam(i, partInt64(parts, 1))
+		return b.deleteTeam(ctx, i, partInt64(parts, 1))
 	case "schedule_team":
-		return b.pickScheduleTeam(i, part(parts, 1), data.Values)
+		return b.pickScheduleTeam(ctx, i, part(parts, 1), data.Values)
 	case "schedule_cadence":
 		return b.pickCadence(i, part(parts, 1), partInt(parts, 2))
 	case "schedule_weekdays":
@@ -149,34 +155,34 @@ func (b *Bot) handleComponent(i *discordgo.Interaction) error {
 	case "schedule_date_back":
 		return b.openScheduleDate(i, part(parts, 1))
 	case "schedule_commit":
-		return b.commitSchedule(i, part(parts, 1))
+		return b.commitSchedule(ctx, i, part(parts, 1))
 	case "schedule_cancel":
 		b.Drafts.DeleteSchedule(part(parts, 1))
 		return b.update(i, "Setup cancelled.", nil)
 	case "schedule_manage_pick":
-		return b.pickScheduleManage(i, data.Values)
+		return b.pickScheduleManage(ctx, i, data.Values)
 	case "schedule_publish":
-		return b.publishNow(i, partInt64(parts, 1))
+		return b.publishNow(ctx, i, partInt64(parts, 1))
 	case "schedule_enable":
-		return b.enableSchedule(i, partInt64(parts, 1), true)
+		return b.enableSchedule(ctx, i, partInt64(parts, 1), true)
 	case "schedule_disable":
-		return b.enableSchedule(i, partInt64(parts, 1), false)
+		return b.enableSchedule(ctx, i, partInt64(parts, 1), false)
 	case "schedule_replace":
-		return b.beginScheduleForTeam(i, partInt64(parts, 1))
+		return b.beginScheduleForTeam(ctx, i, partInt64(parts, 1))
 	case "schedule_republish":
-		return b.republishLatest(i, partInt64(parts, 1))
+		return b.republishLatest(ctx, i, partInt64(parts, 1))
 	case "availability":
-		return b.openAvailability(i, partInt64(parts, 1))
+		return b.openAvailability(ctx, i, partInt64(parts, 1))
 	case "availability_set":
-		return b.saveAvailability(i, partInt64(parts, 1), data.Values)
+		return b.saveAvailability(ctx, i, partInt64(parts, 1), data.Values)
 	case "availability_none":
-		return b.saveAvailability(i, partInt64(parts, 1), nil)
+		return b.saveAvailability(ctx, i, partInt64(parts, 1), nil)
 	case "poll_manage":
-		return b.openPollManage(i, partInt64(parts, 1))
+		return b.openPollManage(ctx, i, partInt64(parts, 1))
 	case "occurrence_select":
 		return b.selectOccurrence(i, partInt64s(data.Values))
 	case "occurrence_action":
-		return b.changeOccurrence(i, partInt64(parts, 1), part(parts, 2))
+		return b.changeOccurrence(ctx, i, partInt64(parts, 1), part(parts, 2))
 	default:
 		return errors.New("unknown or expired interaction")
 	}

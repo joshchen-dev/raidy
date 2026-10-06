@@ -14,8 +14,8 @@ import (
 	"github.com/joshchen-dev/raidy/internal/team"
 )
 
-func (b *Bot) openScheduleSetup(i *discordgo.Interaction) error {
-	teams, err := b.Store.TeamsLedBy(context.Background(), i.GuildID, userID(i))
+func (b *Bot) openScheduleSetup(ctx context.Context, i *discordgo.Interaction) error {
+	teams, err := b.Store.TeamsLedBy(ctx, i.GuildID, userID(i))
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func (b *Bot) openScheduleSetup(i *discordgo.Interaction) error {
 	return b.ephemeral(i, "Choose the team to schedule.", components)
 }
 
-func (b *Bot) pickScheduleTeam(i *discordgo.Interaction, token string, values []string) error {
+func (b *Bot) pickScheduleTeam(ctx context.Context, i *discordgo.Interaction, token string, values []string) error {
 	if len(values) != 1 {
 		return errors.New("choose one team")
 	}
@@ -47,7 +47,7 @@ func (b *Bot) pickScheduleTeam(i *discordgo.Interaction, token string, values []
 	if err != nil {
 		return errors.New("invalid team")
 	}
-	value, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), id)
+	value, err := b.ownsTeam(ctx, i.GuildID, userID(i), id)
 	if err != nil {
 		return err
 	}
@@ -61,11 +61,11 @@ func (b *Bot) pickScheduleTeam(i *discordgo.Interaction, token string, values []
 	return b.update(i, "Choose how much time each timetable covers.", cadenceComponents(token))
 }
 
-func (b *Bot) beginScheduleForTeam(i *discordgo.Interaction, teamID int64) error {
+func (b *Bot) beginScheduleForTeam(ctx context.Context, i *discordgo.Interaction, teamID int64) error {
 	if err := invalidID(teamID); err != nil {
 		return err
 	}
-	value, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), teamID)
+	value, err := b.ownsTeam(ctx, i.GuildID, userID(i), teamID)
 	if err != nil {
 		return err
 	}
@@ -422,7 +422,7 @@ func (b *Bot) reviewSchedule(i *discordgo.Interaction, token string) error {
 	return b.update(i, content, components)
 }
 
-func (b *Bot) commitSchedule(i *discordgo.Interaction, token string) error {
+func (b *Bot) commitSchedule(ctx context.Context, i *discordgo.Interaction, token string) error {
 	draft, err := b.Drafts.Schedule(token, i.GuildID, userID(i))
 	if err != nil {
 		return err
@@ -435,15 +435,15 @@ func (b *Bot) commitSchedule(i *discordgo.Interaction, token string) error {
 		return err
 	}
 	draft.ChannelName = channel.Name
-	if err := b.Store.SaveSchedule(context.Background(), draft); err != nil {
+	if err := b.Store.SaveSchedule(ctx, draft); err != nil {
 		return err
 	}
 	b.Drafts.DeleteSchedule(token)
 	return b.update(i, "Recurring timetable activated for **"+draft.TeamName+"**.", nil)
 }
 
-func (b *Bot) openScheduleManage(i *discordgo.Interaction) error {
-	teams, err := b.Store.TeamsLedBy(context.Background(), i.GuildID, userID(i))
+func (b *Bot) openScheduleManage(ctx context.Context, i *discordgo.Interaction) error {
+	teams, err := b.Store.TeamsLedBy(ctx, i.GuildID, userID(i))
 	if err != nil {
 		return err
 	}
@@ -459,7 +459,7 @@ func (b *Bot) openScheduleManage(i *discordgo.Interaction) error {
 	return b.ephemeral(i, "Choose the timetable to manage.", components)
 }
 
-func (b *Bot) pickScheduleManage(i *discordgo.Interaction, values []string) error {
+func (b *Bot) pickScheduleManage(ctx context.Context, i *discordgo.Interaction, values []string) error {
 	if len(values) != 1 {
 		return errors.New("choose one team")
 	}
@@ -467,7 +467,7 @@ func (b *Bot) pickScheduleManage(i *discordgo.Interaction, values []string) erro
 	if err != nil {
 		return errors.New("invalid team")
 	}
-	value, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), id)
+	value, err := b.ownsTeam(ctx, i.GuildID, userID(i), id)
 	if err != nil {
 		return err
 	}
@@ -494,15 +494,15 @@ func (b *Bot) showScheduleManage(i *discordgo.Interaction, value team.Team, upda
 	return b.ephemeral(i, content, components)
 }
 
-func (b *Bot) publishNow(i *discordgo.Interaction, teamID int64) error {
+func (b *Bot) publishNow(ctx context.Context, i *discordgo.Interaction, teamID int64) error {
 	if err := invalidID(teamID); err != nil {
 		return err
 	}
-	value, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), teamID)
+	value, err := b.ownsTeam(ctx, i.GuildID, userID(i), teamID)
 	if err != nil {
 		return err
 	}
-	if err := b.PublishTeam(context.Background(), teamID, userID(i)); err != nil {
+	if err := b.PublishTeam(ctx, teamID, userID(i)); err != nil {
 		return err
 	}
 	return b.update(i, "Published the next timetable for **"+value.Name+"**.", nil)
@@ -526,15 +526,15 @@ func (b *Bot) PublishTeam(ctx context.Context, teamID int64, leaderID string) er
 	return b.publishUnpublished(ctx)
 }
 
-func (b *Bot) enableSchedule(i *discordgo.Interaction, teamID int64, enabled bool) error {
+func (b *Bot) enableSchedule(ctx context.Context, i *discordgo.Interaction, teamID int64, enabled bool) error {
 	if err := invalidID(teamID); err != nil {
 		return err
 	}
-	value, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), teamID)
+	value, err := b.ownsTeam(ctx, i.GuildID, userID(i), teamID)
 	if err != nil {
 		return err
 	}
-	if err := b.SetTeamScheduleEnabled(context.Background(), teamID, userID(i), enabled); err != nil {
+	if err := b.SetTeamScheduleEnabled(ctx, teamID, userID(i), enabled); err != nil {
 		return err
 	}
 	state := "paused"
@@ -548,14 +548,14 @@ func (b *Bot) SetTeamScheduleEnabled(ctx context.Context, teamID int64, leaderID
 	return b.Store.SetScheduleEnabled(ctx, teamID, leaderID, enabled)
 }
 
-func (b *Bot) republishLatest(i *discordgo.Interaction, teamID int64) error {
+func (b *Bot) republishLatest(ctx context.Context, i *discordgo.Interaction, teamID int64) error {
 	if err := invalidID(teamID); err != nil {
 		return err
 	}
-	if _, err := b.ownsTeam(context.Background(), i.GuildID, userID(i), teamID); err != nil {
+	if _, err := b.ownsTeam(ctx, i.GuildID, userID(i), teamID); err != nil {
 		return err
 	}
-	if err := b.RepublishTeam(context.Background(), teamID, userID(i)); err != nil {
+	if err := b.RepublishTeam(ctx, teamID, userID(i)); err != nil {
 		return err
 	}
 	return b.update(i, "Latest timetable republished.", nil)
