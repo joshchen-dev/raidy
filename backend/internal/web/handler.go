@@ -33,7 +33,7 @@ type Handler struct {
 	log        *slog.Logger
 	config     Config
 	origin     string
-	sessions   *sessionStore
+	sessions   sessionStore
 	httpClient *http.Client
 	discordAPI string
 	static     http.Handler
@@ -54,7 +54,7 @@ func New(store *postgres.Store, session *discordgo.Session, bot *raidydiscord.Bo
 	}
 	h := &Handler{
 		store: store, discord: session, bot: bot, log: log, config: config,
-		origin: base.Scheme + "://" + base.Host, sessions: newSessionStore(),
+		origin: base.Scheme + "://" + base.Host, sessions: dbSessions{store: store, log: log},
 		httpClient: &http.Client{Timeout: 10 * time.Second}, discordAPI: "https://discord.com/api/v10",
 	}
 	if config.StaticDir != "" {
@@ -122,7 +122,7 @@ func (h *Handler) requireSession(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "sign in with Discord")
 			return
 		}
-		value, ok := h.sessions.get(cookie.Value)
+		value, ok := h.sessions.get(r.Context(), cookie.Value)
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "session expired; sign in again")
 			return

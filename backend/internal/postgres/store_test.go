@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -64,6 +65,45 @@ func TestForcedPublishDoesNotSkipPeriods(t *testing.T) {
 	schedule, err := store.Schedule(ctx, created.ID)
 	if err != nil || schedule.NextPeriodStart.Format("2006-01-02") != "2026-10-19" {
 		t.Fatalf("next period=%v err=%v, want one cadence after the published period", schedule.NextPeriodStart, err)
+	}
+}
+
+func TestWebSessionsPersistAndExpire(t *testing.T) {
+	store, pool := openTestStore(t)
+	ctx := context.Background()
+	// The web package's session tests share this table, so use unique keys
+	// instead of truncating it.
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	key := func(name string) []byte {
+		return []byte(fmt.Sprintf("%s-%s-%d", t.Name(), name, time.Now().UnixNano()))
+	}
+	live, expired, another := key("live"), key("expired"), key("another")
+	if err := store.PutSession(ctx, live, []byte(`{"user":{"id":"u1"}}`), now.Add(time.Hour), now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutSession(ctx, expired, []byte(`{}`), now.Add(-time.Minute), now.Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := store.Session(ctx, live, now)
+	if err != nil || string(data) != `{"user": {"id": "u1"}}` {
+		t.Fatalf("Session(live) = %s, %v", data, err)
+	}
+	if _, err := store.Session(ctx, expired, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Session(expired) error = %v, want ErrNotFound", err)
+	}
+	// Writing a new session prunes expired rows.
+	if err := store.PutSession(ctx, another, []byte(`{}`), now.Add(time.Hour), now); err != nil {
+		t.Fatal(err)
+	}
+	var rows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM web_sessions WHERE token_hash=$1`, expired).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("expired rows=%d err=%v, want pruned", rows, err)
+	}
+	if err := store.DeleteSession(ctx, live); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Session(ctx, live, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Session(deleted) error = %v, want ErrNotFound", err)
 	}
 }
 
