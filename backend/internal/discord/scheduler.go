@@ -35,6 +35,10 @@ func (b *Bot) runSchedulerTick(ctx context.Context) {
 			if !created {
 				break
 			}
+			if poll.ID == 0 {
+				b.Log.Info("skipped elapsed period", "team_id", teamID)
+				continue
+			}
 			b.Log.Info("poll cycle advanced", "poll_id", poll.ID, "team_id", teamID)
 		}
 	}

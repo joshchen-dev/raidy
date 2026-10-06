@@ -455,6 +455,14 @@ func (s *Store) PublishNext(ctx context.Context, teamID int64, force bool, now t
 	if len(occurrences) == 0 {
 		return team.Poll{}, false, errors.New("schedule produced no occurrences")
 	}
+	if !occurrences[len(occurrences)-1].StartsAt.After(now) {
+		// Every raid in this period has already started, typically after
+		// downtime. Skip it instead of publishing a poll nobody can answer.
+		if err := advanceSchedule(ctx, tx, schedule); err != nil {
+			return team.Poll{}, false, err
+		}
+		return team.Poll{TeamID: teamID}, true, tx.Commit(ctx)
+	}
 
 	periodEnd := schedule.NextPeriodStart.AddDate(0, 0, schedule.CadenceDays)
 	var pollID int64
