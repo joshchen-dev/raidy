@@ -46,17 +46,19 @@ func (h *Handler) teams(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), discordTimeout)
+	defer cancel()
 	result := make([]teamResponse, 0, len(values))
 	for _, value := range values {
 		if current.hasGuild(value.GuildID) {
 			if name := current.guildName(value.GuildID); name != "" && name != value.GuildName {
 				if err := h.store.UpdateGuildName(r.Context(), value.ID, name); err != nil {
-					h.fail(w, r, err)
-					return
+					h.log.Warn("guild name refresh failed", "team_id", value.ID, "error", err)
+				} else {
+					value.GuildName = name
 				}
-				value.GuildName = name
 			}
-			result = append(result, h.teamResponse(value, current.User.ID))
+			result = append(result, h.teamResponse(ctx, value, current.User.ID))
 		}
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -77,7 +79,9 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	if err := h.validateMembers(r.Context(), input.GuildID, current.User.ID, input.MemberIDs); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), discordTimeout)
+	defer cancel()
+	if err := h.validateMembers(ctx, input.GuildID, current.User.ID, input.MemberIDs); err != nil {
 		h.fail(w, r, err)
 		return
 	}
@@ -86,7 +90,7 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, h.teamResponse(created, current.User.ID))
+	writeJSON(w, http.StatusCreated, h.teamResponse(ctx, created, current.User.ID))
 }
 
 func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +112,9 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	if err := h.validateMembers(r.Context(), value.GuildID, current.User.ID, input.MemberIDs); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), discordTimeout)
+	defer cancel()
+	if err := h.validateMembers(ctx, value.GuildID, current.User.ID, input.MemberIDs); err != nil {
 		h.fail(w, r, err)
 		return
 	}
@@ -124,7 +130,7 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.teamResponse(updated, current.User.ID))
+	writeJSON(w, http.StatusOK, h.teamResponse(ctx, updated, current.User.ID))
 }
 
 func (h *Handler) deleteTeam(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +175,7 @@ func (h *Handler) validateMembers(ctx context.Context, guildID, leaderID string,
 			continue
 		}
 		seen[id] = true
-		member, err := h.discord.GuildMember(guildID, id)
+		member, err := h.member(ctx, guildID, id)
 		if err != nil || member.User == nil || member.User.Bot {
 			return clientError{message: "every teammate must be a human member of the Discord server"}
 		}
@@ -177,10 +183,28 @@ func (h *Handler) validateMembers(ctx context.Context, guildID, leaderID string,
 	return nil
 }
 
-func (h *Handler) teamResponse(value team.Team, userID string) teamResponse {
+// discordTimeout bounds every Discord REST lookup made while serving one request.
+const discordTimeout = 5 * time.Second
+
+// member resolves a guild member from the gateway cache and only falls back to
+// REST for members the bot has not seen yet.
+func (h *Handler) member(ctx context.Context, guildID, userID string) (*discordgo.Member, error) {
+	if member, err := h.discord.State.Member(guildID, userID); err == nil {
+		return member, nil
+	}
+	member, err := h.discord.GuildMember(guildID, userID, discordgo.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	member.GuildID = guildID
+	_ = h.discord.State.MemberAdd(member) // Best effort: caching needs the guild in state.
+	return member, nil
+}
+
+func (h *Handler) teamResponse(ctx context.Context, value team.Team, userID string) teamResponse {
 	members := make([]memberResponse, 0, len(value.MemberIDs))
 	for _, id := range value.MemberIDs {
-		member, err := h.discord.GuildMember(value.GuildID, id)
+		member, err := h.member(ctx, value.GuildID, id)
 		if err != nil || member.User == nil {
 			members = append(members, memberResponse{ID: id, Name: id})
 			continue
