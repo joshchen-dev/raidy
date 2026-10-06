@@ -116,7 +116,7 @@ export function Overview({
         <h1 className="text-xl font-semibold tracking-tight">No timetable yet</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {team.isLeader
-            ? "Choose the days and time your static raids. Raidy then posts a vote in Discord before every period."
+            ? "Choose the days and time your static raids. Raidy then opens voting and announces the dates in Discord before every period."
             : "Your leader hasn't set up the recurring schedule yet."}
         </p>
         {team.isLeader && (

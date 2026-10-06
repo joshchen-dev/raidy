@@ -44,6 +44,28 @@ func TestLoginSetsOAuthState(t *testing.T) {
 	}
 }
 
+func TestLoginReturnsToTheLinkedTeam(t *testing.T) {
+	h := &Handler{config: Config{ClientID: "client", BaseURL: "http://localhost:5173"}}
+	cases := map[string]string{
+		"/api/auth/login?team=42":                  "/app?team=42",
+		"/api/auth/login":                          "/app",
+		"/api/auth/login?team=//evil.example":      "/app",
+		"/api/auth/login?team=-3":                  "/app",
+		"/api/auth/login?team=42%26next%3D%2Fevil": "/app",
+	}
+	for target, want := range cases {
+		response := httptest.NewRecorder()
+		h.login(response, httptest.NewRequest(http.MethodGet, target, nil))
+		location, err := url.Parse(response.Header().Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := afterLogin(location.Query().Get("state")); got != want {
+			t.Errorf("%s returns to %q, want %q", target, got, want)
+		}
+	}
+}
+
 func TestSessionLifecycle(t *testing.T) {
 	testSessionStore(t, newMemorySessions())
 }

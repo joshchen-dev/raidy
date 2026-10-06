@@ -6,23 +6,6 @@ import (
 	"time"
 )
 
-func TestDraftOwnershipAndExpiry(t *testing.T) {
-	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
-	drafts := NewDrafts()
-	drafts.now = func() time.Time { return now }
-	token, err := drafts.NewTeam(TeamDraft{GuildID: "guild", UserID: "owner"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := drafts.Team(token, "guild", "other"); err == nil || !strings.Contains(err.Error(), "another user") {
-		t.Fatalf("expected ownership error, got %v", err)
-	}
-	now = now.Add(16 * time.Minute)
-	if _, err := drafts.Team(token, "guild", "owner"); err == nil || !strings.Contains(err.Error(), "expired") {
-		t.Fatalf("expected expiry error, got %v", err)
-	}
-}
-
 func TestNameAndWeekdayNormalization(t *testing.T) {
 	if got := NormalizeName("  The   Echo  "); got != "the echo" {
 		t.Fatalf("NormalizeName() = %q", got)

@@ -199,7 +199,7 @@ export function SchedulePanel({
         detail={
           saved
             ? `${describeSchedule(saved)} · ${saved.enabled ? "posting automatically" : "automatic posting paused"}`
-            : "Set the raid days once. Raidy posts a vote in Discord before every period."
+            : "Set the raid days once. Raidy opens voting and announces the dates in Discord before every period."
         }
         actions={
           saved && (
@@ -260,7 +260,7 @@ export function SchedulePanel({
             </Field>
           </Section>
 
-          <Section title="Voting" description="Each period gets its own availability vote in Discord.">
+          <Section title="Voting" description="Each period opens its own availability vote, announced in Discord.">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Repeats">
                 <Select

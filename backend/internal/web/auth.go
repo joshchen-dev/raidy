@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -169,6 +170,11 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	// The team to open after sign-in rides in the state, which the callback
+	// already verifies against the cookie, so it cannot be tampered with.
+	if teamID, err := strconv.ParseInt(r.URL.Query().Get("team"), 10, 64); err == nil && teamID > 0 {
+		state += "." + strconv.FormatInt(teamID, 10)
+	}
 	h.setCookie(w, stateCookie, state, 10*time.Minute)
 	query := url.Values{
 		"client_id":     {h.config.ClientID},
@@ -208,7 +214,16 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setCookie(w, sessionCookie, sessionToken, 24*time.Hour)
-	http.Redirect(w, r, "/app", http.StatusFound)
+	http.Redirect(w, r, afterLogin(state.Value), http.StatusFound)
+}
+
+// afterLogin is the app page to open once the OAuth state checks out.
+func afterLogin(state string) string {
+	_, team, found := strings.Cut(state, ".")
+	if teamID, err := strconv.ParseInt(team, 10, 64); found && err == nil && teamID > 0 {
+		return "/app?team=" + strconv.FormatInt(teamID, 10)
+	}
+	return "/app"
 }
 
 func (h *Handler) exchangeCode(r *http.Request, code string) (string, error) {
