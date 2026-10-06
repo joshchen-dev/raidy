@@ -186,3 +186,41 @@ func TestBotChannelPermissionsUsesCachedGuildState(t *testing.T) {
 		t.Fatal("denied channel was accepted")
 	}
 }
+
+// Regression: Discord sends the display name as "global_name"; reading the
+// wrong key left every signed-in user shown by username only.
+func TestDiscordIdentityReadsGlobalNameAndBotGuilds(t *testing.T) {
+	discord := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/users/@me":
+			_, _ = w.Write([]byte(`{"id":"u1","username":"alisaie","global_name":"Alisaie","avatar":"abc"}`))
+		case "/users/@me/guilds":
+			_, _ = w.Write([]byte(`[{"id":"g1","name":"Scions"},{"id":"g2","name":"Without bot"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer discord.Close()
+	session, err := discordgo.New("Bot test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.State.GuildAdd(&discordgo.Guild{ID: "g1"}); err != nil {
+		t.Fatal(err)
+	}
+	h := &Handler{discord: session, discordAPI: discord.URL, httpClient: discord.Client()}
+	current, guilds, err := h.discordIdentity(httptest.NewRequest(http.MethodGet, "/api/auth/callback", nil), "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.GlobalName != "Alisaie" || current.Username != "alisaie" || current.Avatar != "abc" {
+		t.Fatalf("user = %+v, want global_name decoded", current)
+	}
+	if len(guilds) != 1 || guilds[0].ID != "g1" {
+		t.Fatalf("guilds = %+v, want only the guild the bot is in", guilds)
+	}
+}

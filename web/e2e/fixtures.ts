@@ -99,6 +99,11 @@ export async function mockSignedInLeader(page: Page): Promise<Recorder> {
           ...schedule,
           occurrences: [occurrence(0, "2099-10-21", 0), occurrence(0, "2099-10-22", 0)]
         });
+      case "GET /api/guilds/g1/channels":
+        return json(route, [
+          { id: "c1", name: "raid-schedule" },
+          { id: "c2", name: "general" }
+        ]);
       case "POST /api/occurrences/102/status":
         return route.fulfill({ status: 204 });
       default:
