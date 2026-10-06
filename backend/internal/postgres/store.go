@@ -763,6 +763,37 @@ func (s *Store) LatestPoll(ctx context.Context, teamID int64) (team.PollView, er
 	return s.PollView(ctx, id)
 }
 
+// OpenPolls returns every voting period that is still open, earliest first, so
+// the current week stays visible after the next week is published early.
+func (s *Store) OpenPolls(ctx context.Context, teamID int64) ([]team.PollView, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM schedule_polls WHERE team_id=$1 AND closed_at IS NULL ORDER BY period_start`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	views := make([]team.PollView, 0, len(ids))
+	for _, id := range ids {
+		view, err := s.PollView(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		views = append(views, view)
+	}
+	return views, nil
+}
+
 func (s *Store) PollIDForOccurrence(ctx context.Context, occurrenceID int64) (int64, error) {
 	var pollID int64
 	err := s.pool.QueryRow(ctx, `SELECT poll_id FROM poll_occurrences WHERE id=$1`, occurrenceID).Scan(&pollID)

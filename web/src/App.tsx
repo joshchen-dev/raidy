@@ -227,15 +227,20 @@ function SectionTitle({ title, detail }: { title: string; detail: string }) {
 
 function Overview({ team, revision, onError }: { team: Team; revision: number; onError: (value: string) => void }) {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [poll, setPoll] = useState<Poll | null>(null);
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [pollID, setPollID] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([api<Schedule>(`/api/teams/${team.id}/schedule`), api<Poll>(`/api/teams/${team.id}/poll`)]).then(([nextSchedule, nextPoll]) => {
-      setSchedule(nextSchedule); setPoll(nextPoll);
+    Promise.all([api<Schedule>(`/api/teams/${team.id}/schedule`), api<Poll[]>(`/api/teams/${team.id}/polls`)]).then(([nextSchedule, nextPolls]) => {
+      const open = nextPolls ?? [];
+      setSchedule(nextSchedule); setPolls(open);
+      setPollID((current) => open.some((value) => value.id === current) ? current : open[0]?.id ?? null);
     }).catch((reason) => onError(message(reason))).finally(() => setLoading(false));
   }, [team.id, revision]);
+
+  const poll = polls.find((value) => value.id === pollID) ?? null;
 
   if (loading) return <LoadingPanel />;
   return (
@@ -249,7 +254,12 @@ function Overview({ team, revision, onError }: { team: Team; revision: number; o
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-3">
           <div><CardTitle>Current timetable</CardTitle><CardDescription className="mt-1">Voting happens in Discord; current responses are shown here.</CardDescription></div>
-          {poll && <span className="text-sm text-muted-foreground">{poll.periodStart} — {poll.periodEnd}</span>}
+          {poll && (polls.length > 1 ? (
+            <Select value={poll.id.toString()} onValueChange={(value) => setPollID(Number(value))}>
+              <SelectTrigger className="h-9 w-56" aria-label="Voting period"><SelectValue /></SelectTrigger>
+              <SelectContent position="popper">{polls.map((value) => <SelectItem key={value.id} value={value.id.toString()}>{value.periodStart} — {value.periodEnd}</SelectItem>)}</SelectContent>
+            </Select>
+          ) : <span className="text-sm text-muted-foreground">{poll.periodStart} — {poll.periodEnd}</span>)}
         </CardHeader>
         <CardContent>
         {!poll ? <p className="py-8 text-center text-sm text-muted-foreground">No active timetable has been published.</p> : (

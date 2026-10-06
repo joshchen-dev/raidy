@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/joshchen-dev/raidy/internal/postgres"
+	"github.com/joshchen-dev/raidy/internal/team"
 )
 
 func TestFailMapsErrorsToStatus(t *testing.T) {
@@ -44,5 +46,23 @@ func TestFailMapsErrorsToStatus(t *testing.T) {
 	}
 	if !errors.Is(fmt.Errorf("wrapped: %w", postgres.ErrDuplicateTeam), postgres.ErrDuplicateTeam) {
 		t.Fatal("ErrDuplicateTeam must survive wrapping")
+	}
+}
+
+func TestPollJSONCountsVotesPerOccurrence(t *testing.T) {
+	start := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	view := team.PollView{
+		Poll: team.Poll{ID: 9, PeriodStart: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), PeriodEnd: time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC), Timezone: "Asia/Tokyo",
+			Occurrences: []team.Occurrence{{ID: 1, StartsAt: start, EndsAt: start.Add(2 * time.Hour), Status: "proposed"}}},
+		Members:      []string{"a", "b", "c"},
+		Availability: map[int64]map[string]bool{1: {"a": true, "b": false}},
+	}
+	got := pollJSON(view)
+	if got.ID != 9 || got.PeriodEnd != "2026-10-11" {
+		t.Fatalf("poll = %+v, want id 9 ending on the inclusive last day", got)
+	}
+	occurrence := got.Occurrences[0]
+	if occurrence.Available != 1 || occurrence.Unavailable != 1 || occurrence.Pending != 1 || len(occurrence.Votes) != 3 {
+		t.Fatalf("occurrence counts = %+v", occurrence)
 	}
 }

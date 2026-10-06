@@ -67,6 +67,50 @@ func TestForcedPublishDoesNotSkipPeriods(t *testing.T) {
 	}
 }
 
+func TestOpenPollsListsEveryActivePeriodInOrder(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	created, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "The Echo", "Asia/Tokyo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	location, _ := time.LoadLocation("Asia/Tokyo")
+	periodStart := time.Date(2026, 10, 5, 0, 0, 0, 0, location)
+	publishAt := periodStart.Add(-3 * 24 * time.Hour)
+	if err := store.SaveSchedule(ctx, team.ScheduleDraft{
+		TeamID: created.ID, UserID: "leader", CadenceDays: 7, Weekdays: []time.Weekday{time.Wednesday},
+		StartMinutes: 21 * 60, EndMinutes: 23 * 60, FirstPeriodStart: periodStart, FirstPublishAt: publishAt, ChannelID: "channel",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := store.PublishNext(ctx, created.ID, false, publishAt); err != nil || !created {
+		t.Fatalf("scheduled PublishNext() created=%v err=%v", created, err)
+	}
+	// During the current period, the leader opens next week's voting early.
+	duringPeriod := periodStart.Add(24 * time.Hour)
+	if _, created, err := store.PublishNext(ctx, created.ID, true, duringPeriod); err != nil || !created {
+		t.Fatalf("early PublishNext() created=%v err=%v", created, err)
+	}
+	views, err := store.OpenPolls(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(views) != 2 || views[0].Poll.PeriodStart.Format("2006-01-02") != "2026-10-05" || views[1].Poll.PeriodStart.Format("2006-01-02") != "2026-10-12" {
+		t.Fatalf("OpenPolls() periods = %v, want 2026-10-05 then 2026-10-12", periodStarts(views))
+	}
+	if len(views[0].Poll.Occurrences) == 0 {
+		t.Fatal("OpenPolls() must include occurrences")
+	}
+}
+
+func periodStarts(views []team.PollView) []string {
+	result := make([]string, len(views))
+	for i, view := range views {
+		result[i] = view.Poll.PeriodStart.Format("2006-01-02")
+	}
+	return result
+}
+
 func TestTeamErrorsAreTyped(t *testing.T) {
 	store, _ := openTestStore(t)
 	ctx := context.Background()
