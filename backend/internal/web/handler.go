@@ -164,8 +164,9 @@ func unsafeMethod(method string) bool {
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	status := http.StatusInternalServerError
 	var inputError clientError
+	var validation postgres.ValidationError
 	switch {
-	case errors.As(err, &inputError):
+	case errors.As(err, &inputError), errors.As(err, &validation):
 		status = http.StatusBadRequest
 	case errors.Is(err, context.DeadlineExceeded):
 		status = http.StatusGatewayTimeout
@@ -173,11 +174,12 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusForbidden
 	case errors.Is(err, postgres.ErrNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, postgres.ErrAlreadyPublished):
+	case errors.Is(err, postgres.ErrAlreadyPublished), errors.Is(err, postgres.ErrDuplicateTeam):
 		status = http.StatusConflict
 	}
 	if status == http.StatusGatewayTimeout {
-		writeError(w, status, "Discord took too long to respond; try again")
+		h.log.Warn("web request timed out", "method", r.Method, "path", r.URL.Path, "error", err)
+		writeError(w, status, "The request timed out; try again")
 		return
 	}
 	if status == http.StatusInternalServerError {

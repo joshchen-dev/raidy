@@ -67,6 +67,31 @@ func TestForcedPublishDoesNotSkipPeriods(t *testing.T) {
 	}
 }
 
+func TestTeamErrorsAreTyped(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	if _, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "The Echo", "Asia/Tokyo", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateTeam(ctx, "guild", "Raid Night", "other", " the echo ", "Asia/Tokyo", nil); !errors.Is(err, ErrDuplicateTeam) {
+		t.Fatalf("duplicate CreateTeam() error = %v, want ErrDuplicateTeam", err)
+	}
+	second, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "Second", "Asia/Tokyo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateTeam(ctx, second.ID, "leader", "The Echo", "Asia/Tokyo", nil); !errors.Is(err, ErrDuplicateTeam) {
+		t.Fatalf("duplicate UpdateTeam() error = %v, want ErrDuplicateTeam", err)
+	}
+	var validation ValidationError
+	if _, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "Too Big", "Asia/Tokyo", []string{"1", "2", "3", "4", "5", "6", "7", "8"}); !errors.As(err, &validation) {
+		t.Fatalf("oversized roster error = %v, want ValidationError", err)
+	}
+	if err := store.SaveSchedule(ctx, team.ScheduleDraft{TeamID: second.ID, UserID: "leader", CadenceDays: 3}); !errors.As(err, &validation) {
+		t.Fatalf("invalid cadence error = %v, want ValidationError", err)
+	}
+}
+
 func TestSchedulingLifecycle(t *testing.T) {
 	store, pool := openTestStore(t)
 	ctx := context.Background()

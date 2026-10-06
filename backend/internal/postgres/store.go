@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/joshchen-dev/raidy/internal/team"
@@ -19,7 +20,22 @@ var (
 	// ErrAlreadyPublished rejects a manual publish while a future period is
 	// already open, so repeated clicks cannot skip voting periods.
 	ErrAlreadyPublished = errors.New("the next period is already published; use Republish to restore its message")
+	ErrDuplicateTeam    = errors.New("a team with this name already exists in this Discord server")
 )
+
+// ValidationError is a rejected input whose message is safe to show to users.
+type ValidationError struct{ Message string }
+
+func (e ValidationError) Error() string { return e.Message }
+
+// teamWriteError turns the unique (guild_id, name_key) violation into ErrDuplicateTeam.
+func teamWriteError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.TableName == "teams" {
+		return ErrDuplicateTeam
+	}
+	return err
+}
 
 type Store struct{ pool *pgxpool.Pool }
 
@@ -56,7 +72,7 @@ func (s *Store) CreateTeam(ctx context.Context, guildID, guildName, leaderID, na
 		guildID, guildName, team.NormalizeName(name), team.DisplayName(name), timezone, leaderID,
 	).Scan(&id)
 	if err != nil {
-		return team.Team{}, err
+		return team.Team{}, teamWriteError(err)
 	}
 	for _, memberID := range members {
 		if _, err := tx.Exec(ctx, `INSERT INTO team_members (team_id, user_id) VALUES ($1, $2)`, id, memberID); err != nil {
@@ -144,7 +160,7 @@ func roster(leaderID string, members []string) ([]string, error) {
 		result = append(result, id)
 	}
 	if len(result) > 8 {
-		return nil, errors.New("a static team can have at most eight members")
+		return nil, ValidationError{"a static team can have at most eight members"}
 	}
 	sort.Strings(result)
 	return result, nil
@@ -239,7 +255,7 @@ func (s *Store) UpdateTeam(ctx context.Context, teamID int64, leaderID, name, ti
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE teams SET name_key=$1,display_name=$2,timezone=$3 WHERE id=$4`, team.NormalizeName(name), team.DisplayName(name), timezone, teamID); err != nil {
-		return err
+		return teamWriteError(err)
 	}
 	if err := replaceRoster(ctx, tx, teamID, members); err != nil {
 		return err
@@ -249,16 +265,16 @@ func (s *Store) UpdateTeam(ctx context.Context, teamID int64, leaderID, name, ti
 
 func (s *Store) SaveSchedule(ctx context.Context, draft team.ScheduleDraft) error {
 	if draft.CadenceDays != 7 && draft.CadenceDays != 14 {
-		return errors.New("cadence must be weekly or biweekly")
+		return ValidationError{"cadence must be weekly or biweekly"}
 	}
 	if len(draft.Weekdays) == 0 {
-		return errors.New("select at least one weekday")
+		return ValidationError{"select at least one weekday"}
 	}
 	if draft.PublishLeadDays == 0 {
 		draft.PublishLeadDays = 3
 	}
 	if !validPublishLead(draft.PublishLeadDays) {
-		return errors.New("invalid publication lead time")
+		return ValidationError{"invalid publication lead time"}
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -270,7 +286,7 @@ func (s *Store) SaveSchedule(ctx context.Context, draft team.ScheduleDraft) erro
 	}
 	if draft.Timezone != "" {
 		if _, err := time.LoadLocation(draft.Timezone); err != nil {
-			return errors.New("invalid timezone")
+			return ValidationError{"invalid timezone"}
 		}
 		if _, err := tx.Exec(ctx, `UPDATE teams SET timezone=$1 WHERE id=$2`, draft.Timezone, draft.TeamID); err != nil {
 			return err

@@ -218,7 +218,7 @@ func (b *Bot) modal(i *discordgo.Interaction, customID, title string, inputs ...
 }
 
 func (b *Bot) respondError(i *discordgo.Interaction, err error) {
-	if responseErr := b.ephemeral(i, "Error: "+err.Error(), nil); responseErr != nil {
+	if responseErr := b.ephemeral(i, userMessage(err), nil); responseErr != nil {
 		b.Log.Error("failed to send interaction error", "error", responseErr)
 	}
 }
