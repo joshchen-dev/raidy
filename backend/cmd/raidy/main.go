@@ -48,7 +48,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	session.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMembers
-	bot := raidydiscord.New(session, store, log)
+	bot := raidydiscord.New(session, store, log, os.Getenv("APP_BASE_URL"))
 	session.AddHandler(bot.Handle)
 	if err := session.Open(); err != nil {
 		return err

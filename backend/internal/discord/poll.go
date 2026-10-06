@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -29,7 +27,7 @@ func (b *Bot) publishUnpublished(ctx context.Context) error {
 			publicationErr = errors.Join(publicationErr, err)
 			continue
 		}
-		embeds, components := renderPoll(view, true)
+		embeds, components := renderAnnouncement(view, true, b.BaseURL)
 		message, err := b.Session.ChannelMessageSendComplex(poll.ChannelID, &discordgo.MessageSend{
 			Embeds:          embeds,
 			Components:      components,
@@ -58,7 +56,7 @@ func (b *Bot) editPoll(ctx context.Context, pollID int64, active bool) error {
 	if view.Poll.MessageID == "" {
 		return nil
 	}
-	embeds, components := renderPoll(view, active)
+	embeds, components := renderAnnouncement(view, active, b.BaseURL)
 	_, err = b.Session.ChannelMessageEditComplex(&discordgo.MessageEdit{
 		ID:              view.Poll.MessageID,
 		Channel:         view.Poll.ChannelID,
@@ -80,29 +78,18 @@ func (b *Bot) RefreshTeamPoll(ctx context.Context, teamID int64) error {
 	return b.editPoll(ctx, view.Poll.ID, true)
 }
 
-func renderPoll(view team.PollView, active bool) ([]*discordgo.MessageEmbed, []discordgo.MessageComponent) {
+func renderAnnouncement(view team.PollView, active bool, baseURL string) ([]*discordgo.MessageEmbed, []discordgo.MessageComponent) {
 	fields := make([]*discordgo.MessageEmbedField, 0, len(view.Poll.Occurrences))
 	for _, occurrence := range view.Poll.Occurrences {
-		available, unavailable := 0, 0
-		var availableMembers, unavailableMembers, pendingMembers []string
+		available := 0
 		for _, memberID := range view.Members {
-			choice, submitted := view.Availability[occurrence.ID][memberID]
-			if !submitted {
-				pendingMembers = append(pendingMembers, memberID)
-				continue
-			}
-			if choice {
+			if view.Availability[occurrence.ID][memberID] {
 				available++
-				availableMembers = append(availableMembers, memberID)
-			} else {
-				unavailable++
-				unavailableMembers = append(unavailableMembers, memberID)
 			}
 		}
-		pending := len(view.Members) - available - unavailable
 		fields = append(fields, &discordgo.MessageEmbedField{
 			Name:  fmt.Sprintf("%s <t:%d:F>", statusIcon(occurrence.Status), occurrence.StartsAt.Unix()),
-			Value: fmt.Sprintf("Available **%d** · Unavailable **%d** · Pending **%d**\nStatus: %s\nAvailable: %s\nUnavailable: %s\nPending: %s", available, unavailable, pending, statusLabel(occurrence.Status), memberMentions(availableMembers), memberMentions(unavailableMembers), memberMentions(pendingMembers)),
+			Value: fmt.Sprintf("**%d/%d available** · %s", available, len(view.Members), statusLabel(occurrence.Status)),
 		})
 	}
 	embed := &discordgo.MessageEmbed{
@@ -114,23 +101,11 @@ func renderPoll(view team.PollView, active bool) ([]*discordgo.MessageEmbed, []d
 		embed.Footer = &discordgo.MessageEmbedFooter{Text: "This timetable is closed and kept as history."}
 		return []*discordgo.MessageEmbed{embed}, nil
 	}
-	id := strconv.FormatInt(view.Poll.ID, 10)
+	embed.Footer = &discordgo.MessageEmbedFooter{Text: "Times are shown in your timezone. Vote and manage dates in Raidy."}
 	components := []discordgo.MessageComponent{discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-		discordgo.Button{CustomID: "availability:" + id, Label: "Set availability", Style: discordgo.PrimaryButton},
-		discordgo.Button{CustomID: "poll_manage:" + id, Label: "Manage dates", Style: discordgo.SecondaryButton},
+		discordgo.Button{Label: "Open in Raidy", Style: discordgo.LinkButton, URL: appURL(baseURL, view.Poll.TeamID)},
 	}}}
 	return []*discordgo.MessageEmbed{embed}, components
-}
-
-func memberMentions(ids []string) string {
-	if len(ids) == 0 {
-		return "—"
-	}
-	mentions := make([]string, len(ids))
-	for index, id := range ids {
-		mentions[index] = "<@" + id + ">"
-	}
-	return strings.Join(mentions, ", ")
 }
 
 func statusIcon(status string) string {
@@ -152,137 +127,11 @@ func statusLabel(status string) string {
 	return strings.ToUpper(status[:1]) + status[1:]
 }
 
-func (b *Bot) openAvailability(ctx context.Context, i *discordgo.Interaction, pollID int64) error {
-	if err := invalidID(pollID); err != nil {
-		return err
-	}
-	view, err := b.Store.PollView(ctx, pollID)
-	if err != nil {
-		return err
-	}
-	memberID := userID(i)
-	if !contains(view.Members, memberID) {
-		return postgres.ErrForbidden
-	}
-	if view.Poll.Expired(now()) {
-		return postgres.ErrExpired
-	}
-	options := make([]discordgo.SelectMenuOption, 0, len(view.Poll.Occurrences))
-	loc := mustLocation(view.Poll.Timezone)
-	for _, occurrence := range view.Poll.Occurrences {
-		if !occurrence.StartsAt.After(now()) {
-			continue
-		}
-		options = append(options, discordgo.SelectMenuOption{
-			Label:       occurrence.StartsAt.In(loc).Format("Mon, Jan 2 15:04"),
-			Value:       strconv.FormatInt(occurrence.ID, 10),
-			Default:     view.Availability[occurrence.ID][memberID],
-			Description: statusLabel(occurrence.Status),
-		})
-	}
-	if len(options) == 0 {
-		return postgres.ErrExpired
-	}
-	id := strconv.FormatInt(pollID, 10)
-	components := []discordgo.MessageComponent{
-		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-			discordgo.SelectMenu{CustomID: "availability_set:" + id, Placeholder: "Select every date you can attend", MinValues: intPtr(0), MaxValues: len(options), Options: options},
-		}},
-		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-			discordgo.Button{CustomID: "availability_none:" + id, Label: "Unavailable for all", Style: discordgo.DangerButton},
-		}},
-	}
-	return b.ephemeral(i, "Selected dates become Available; every omitted date becomes Unavailable.", components)
-}
-
-func (b *Bot) saveAvailability(ctx context.Context, i *discordgo.Interaction, pollID int64, values []string) error {
-	if err := invalidID(pollID); err != nil {
-		return err
-	}
-	ids := partInt64s(values)
-	if len(ids) != len(values) {
-		return errors.New("invalid occurrence")
-	}
-	if err := b.Store.SetAvailability(ctx, pollID, userID(i), ids, now()); err != nil {
-		return err
-	}
-	if err := b.update(i, "Availability saved.", nil); err != nil {
-		return err
-	}
-	b.refresher.queue(pollID)
-	return nil
-}
-
 // SubmitAvailability records a member's answers made outside Discord: listed
 // dates become Available and every other upcoming date Unavailable. The
 // Discord announcement is refreshed in the background.
 func (b *Bot) SubmitAvailability(ctx context.Context, pollID int64, memberID string, available []int64) error {
 	if err := b.Store.SetAvailability(ctx, pollID, memberID, available, now()); err != nil {
-		return err
-	}
-	b.refresher.queue(pollID)
-	return nil
-}
-
-func (b *Bot) openPollManage(ctx context.Context, i *discordgo.Interaction, pollID int64) error {
-	if err := invalidID(pollID); err != nil {
-		return err
-	}
-	view, err := b.Store.PollView(ctx, pollID)
-	if err != nil {
-		return err
-	}
-	if view.Poll.LeaderID != userID(i) {
-		return postgres.ErrForbidden
-	}
-	if view.Poll.Expired(now()) {
-		return postgres.ErrExpired
-	}
-	options := make([]discordgo.SelectMenuOption, 0, len(view.Poll.Occurrences))
-	loc := mustLocation(view.Poll.Timezone)
-	for _, occurrence := range view.Poll.Occurrences {
-		if occurrence.StartsAt.After(now()) {
-			options = append(options, discordgo.SelectMenuOption{
-				Label:       occurrence.StartsAt.In(loc).Format("Mon, Jan 2 15:04"),
-				Value:       strconv.FormatInt(occurrence.ID, 10),
-				Description: statusLabel(occurrence.Status),
-			})
-		}
-	}
-	if len(options) == 0 {
-		return postgres.ErrExpired
-	}
-	components := []discordgo.MessageComponent{discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-		discordgo.SelectMenu{CustomID: "occurrence_select", Placeholder: "Choose a raid date", MinValues: intPtr(1), MaxValues: 1, Options: options},
-	}}}
-	return b.ephemeral(i, "Choose the date to manage.", components)
-}
-
-func (b *Bot) selectOccurrence(i *discordgo.Interaction, ids []int64) error {
-	if len(ids) != 1 {
-		return errors.New("choose one occurrence")
-	}
-	id := strconv.FormatInt(ids[0], 10)
-	components := []discordgo.MessageComponent{discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-		discordgo.Button{CustomID: "occurrence_action:" + id + ":confirm", Label: "Confirm", Style: discordgo.SuccessButton},
-		discordgo.Button{CustomID: "occurrence_action:" + id + ":cancel", Label: "Cancel", Style: discordgo.DangerButton},
-		discordgo.Button{CustomID: "occurrence_action:" + id + ":reopen", Label: "Reopen", Style: discordgo.SecondaryButton},
-	}}}
-	return b.update(i, "Choose the new state for this raid date.", components)
-}
-
-func (b *Bot) changeOccurrence(ctx context.Context, i *discordgo.Interaction, occurrenceID int64, action string) error {
-	if err := invalidID(occurrenceID); err != nil {
-		return err
-	}
-	if err := b.Store.SetOccurrenceStatus(ctx, occurrenceID, userID(i), action, now()); err != nil {
-		return err
-	}
-	pollID, err := b.Store.PollIDForOccurrence(ctx, occurrenceID)
-	if err != nil {
-		return err
-	}
-	if err := b.update(i, "Raid date updated.", nil); err != nil {
 		return err
 	}
 	b.refresher.queue(pollID)
@@ -303,19 +152,49 @@ func (b *Bot) ChangeOccurrence(ctx context.Context, occurrenceID int64, leaderID
 	return nil
 }
 
-func contains(values []string, wanted string) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
+// PublishTeam publishes the team's next timetable now instead of waiting for
+// its scheduled publication time.
+func (b *Bot) PublishTeam(ctx context.Context, teamID int64, leaderID string) error {
+	value, err := b.Store.Team(ctx, teamID)
+	if err != nil {
+		return err
 	}
-	return false
+	if value.LeaderID != leaderID {
+		return postgres.ErrForbidden
+	}
+	poll, created, err := b.Store.PublishNext(ctx, teamID, true, now())
+	if err != nil {
+		return err
+	}
+	if created {
+		b.Log.Info("poll cycle advanced manually", "poll_id", poll.ID, "team_id", teamID)
+	}
+	return b.publishUnpublished(ctx)
 }
 
-func mustLocation(name string) *time.Location {
-	location, err := time.LoadLocation(name)
+func (b *Bot) SetTeamScheduleEnabled(ctx context.Context, teamID int64, leaderID string, enabled bool) error {
+	return b.Store.SetScheduleEnabled(ctx, teamID, leaderID, enabled)
+}
+
+// RepublishTeam replaces the latest timetable message, for example after the
+// original was deleted or the channel changed.
+func (b *Bot) RepublishTeam(ctx context.Context, teamID int64, leaderID string) error {
+	value, err := b.Store.Team(ctx, teamID)
 	if err != nil {
-		return time.UTC
+		return err
 	}
-	return location
+	if value.LeaderID != leaderID {
+		return postgres.ErrForbidden
+	}
+	view, err := b.Store.LatestPoll(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if view.Poll.MessageID != "" {
+		_ = b.Session.ChannelMessageDelete(view.Poll.ChannelID, view.Poll.MessageID)
+	}
+	if err := b.Store.ClearPollMessage(ctx, view.Poll.ID, leaderID); err != nil {
+		return err
+	}
+	return b.publishUnpublished(ctx)
 }

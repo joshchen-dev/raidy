@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/joshchen-dev/raidy/actions/workflows/ci.yml/badge.svg)](https://github.com/joshchen-dev/raidy/actions/workflows/ci.yml)
 
-Raidy is a Discord-first raid scheduling project. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
+Raidy is a raid scheduling project for Discord statics: the web console is where everyone plans, and Discord carries the announcements. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
-**Status:** `v0.0.12` is an early development snapshot.
+**Status:** `v0.0.13` is an early development snapshot.
 
 ```text
 backend/     Go service, Discord interactions, web API, PostgreSQL migrations
@@ -15,16 +15,13 @@ deployment/  local PostgreSQL and Kubernetes deployment manifests
 
 ## MVP behavior
 
-- `/team setup` creates an eight-person-or-smaller static roster with a common-timezone selector and validated custom timezone fallback.
-- `/team manage` replaces that roster or deletes the team and its history.
-- `/schedule setup` configures a weekly or biweekly timetable through weekday, clock, publication-lead, and paginated date selectors.
-- `/schedule manage` publishes early, republishes a deleted message, pauses automation, or replaces the template.
-- Active polls follow roster additions and removals immediately; closed poll history stays unchanged.
-- Members explicitly mark available dates; omitted future dates become unavailable.
+- The web console, behind Discord OAuth2, is where teams, rosters of up to eight, and weekly or biweekly schedules are managed.
+- Members mark the dates they can attend on the availability grid; omitted future dates become unavailable.
 - Leaders confirm, cancel, or reopen dates. A confirmed date becomes `Attention required` when availability drops.
+- Active polls follow roster additions and removals immediately; closed poll history stays unchanged.
 - Polls become read-only history when their final occurrence starts.
-- The standalone web console manages teams and recurring schedules through Discord OAuth2.
-- Members vote on the web availability grid and leaders confirm, cancel, or reopen dates there; Discord votes still work during the move to announcement-only Discord.
+- Discord is announcement-only: each period is posted with its dates in every reader's own timezone, live availability counts and status, and an **Open in Raidy** link. The post is edited in place as votes and decisions change.
+- `/raidy` replies privately with a link to your team's page.
 - The responsive console supports persisted light and dark themes.
 
 ## Run locally
@@ -50,7 +47,7 @@ npm install
 npm run dev
 ```
 
-Set `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, and `DISCORD_CLIENT_SECRET`. Add `http://localhost:5173/api/auth/callback` as an OAuth2 redirect in the Discord developer portal and enable **Server Members Intent** for roster search. Set `DISCORD_GUILD_ID` during development so command changes appear immediately; leave it empty only for global commands.
+Set `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, and `DISCORD_CLIENT_SECRET`, and set `APP_BASE_URL` (for example `http://localhost:5173`) so Discord posts link back to the console. Add `http://localhost:5173/api/auth/callback` as an OAuth2 redirect in the Discord developer portal and enable **Server Members Intent** for roster search. Set `DISCORD_GUILD_ID` during development so command changes appear immediately; leave it empty only for global commands.
 
 The Vite development server opens at `http://localhost:5173` and proxies API calls to the Go process. For a production-style run, build `web/`, set `WEB_DIST_DIR` to its `dist` directory, and set `APP_BASE_URL` to the public origin. The Go process then serves both the API and static assets.
 
@@ -73,7 +70,7 @@ cd ../web
 npm run build
 ```
 
-The PostgreSQL lifecycle test truncates its target database, so always point it at a dedicated test database. It is skipped when `TEST_DATABASE_URL` is unset. Discord interactions still require manual checks in the development server: both modals, user/date selectors, availability edits, automatic publication, expired controls, and republishing after message deletion.
+The PostgreSQL lifecycle test truncates its target database, so always point it at a dedicated test database. It is skipped when `TEST_DATABASE_URL` is unset. Discord still requires manual checks in the development server: `/raidy`, automatic publication, live edits after web votes and date changes, the closed-history footer, and republishing after message deletion.
 
 ## Development workflow
 

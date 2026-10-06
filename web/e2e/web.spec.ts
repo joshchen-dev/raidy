@@ -11,6 +11,17 @@ test("landing explains the product and offers Discord sign-in", async ({ page })
   await expect(page.getByRole("table", { name: /availability/i })).toBeVisible();
 });
 
+test("signing in from a Discord team link returns to that team", async ({ page }) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ status: 401, contentType: "application/json", body: '{"error":"sign in with Discord"}' })
+  );
+  await page.goto("/app?team=42");
+  await expect(page.getByRole("link", { name: "Sign in with Discord" })).toHaveAttribute(
+    "href",
+    "/api/auth/login?team=42"
+  );
+});
+
 test("availability grid shows the earliest open period and highlights full attendance", async ({ page }) => {
   const recorder = await mockSignedInLeader(page);
   await page.goto("/app");

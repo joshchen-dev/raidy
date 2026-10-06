@@ -1,14 +1,11 @@
 package team
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -76,17 +73,6 @@ type PollView struct {
 	Availability map[int64]map[string]bool
 }
 
-type TeamDraft struct {
-	TeamID    int64
-	GuildID   string
-	GuildName string
-	UserID    string
-	Name      string
-	Timezone  string
-	MemberIDs []string
-	ExpiresAt time.Time
-}
-
 type ScheduleDraft struct {
 	GuildID          string
 	UserID           string
@@ -100,109 +86,8 @@ type ScheduleDraft struct {
 	PublishLeadDays  int
 	FirstPeriodStart time.Time
 	FirstPublishAt   time.Time
-	DatePageStart    time.Time
 	ChannelID        string
 	ChannelName      string
-	ExpiresAt        time.Time
-}
-
-type Drafts struct {
-	mu        sync.Mutex
-	now       func() time.Time
-	teams     map[string]TeamDraft
-	schedules map[string]ScheduleDraft
-}
-
-func NewDrafts() *Drafts {
-	return &Drafts{
-		now:       time.Now,
-		teams:     make(map[string]TeamDraft),
-		schedules: make(map[string]ScheduleDraft),
-	}
-}
-
-func (d *Drafts) NewTeam(draft TeamDraft) (string, error) {
-	token, err := token()
-	if err != nil {
-		return "", err
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	draft.ExpiresAt = d.now().Add(15 * time.Minute)
-	d.teams[token] = draft
-	return token, nil
-}
-
-func (d *Drafts) Team(token, guildID, userID string) (TeamDraft, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	draft, ok := d.teams[token]
-	if !ok || d.now().After(draft.ExpiresAt) {
-		delete(d.teams, token)
-		return TeamDraft{}, errors.New("setup expired; run /team setup again")
-	}
-	if draft.GuildID != guildID || draft.UserID != userID {
-		return TeamDraft{}, errors.New("this setup belongs to another user")
-	}
-	return draft, nil
-}
-
-func (d *Drafts) SaveTeam(token string, draft TeamDraft) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.teams[token] = draft
-}
-
-func (d *Drafts) DeleteTeam(token string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	delete(d.teams, token)
-}
-
-func (d *Drafts) NewSchedule(draft ScheduleDraft) (string, error) {
-	token, err := token()
-	if err != nil {
-		return "", err
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	draft.ExpiresAt = d.now().Add(15 * time.Minute)
-	d.schedules[token] = draft
-	return token, nil
-}
-
-func (d *Drafts) Schedule(token, guildID, userID string) (ScheduleDraft, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	draft, ok := d.schedules[token]
-	if !ok || d.now().After(draft.ExpiresAt) {
-		delete(d.schedules, token)
-		return ScheduleDraft{}, errors.New("setup expired; run /schedule setup again")
-	}
-	if draft.GuildID != guildID || draft.UserID != userID {
-		return ScheduleDraft{}, errors.New("this setup belongs to another user")
-	}
-	return draft, nil
-}
-
-func (d *Drafts) SaveSchedule(token string, draft ScheduleDraft) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.schedules[token] = draft
-}
-
-func (d *Drafts) DeleteSchedule(token string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	delete(d.schedules, token)
-}
-
-func token() (string, error) {
-	b := make([]byte, 12)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }
 
 func NormalizeName(s string) string {
@@ -283,17 +168,4 @@ func ParseWeekdays(values []string) ([]time.Weekday, error) {
 	}
 	sort.Slice(days, func(i, j int) bool { return days[i] < days[j] })
 	return days, nil
-}
-
-func WeekdayOptions() []struct {
-	Label string
-	Value string
-} {
-	return []struct {
-		Label string
-		Value string
-	}{
-		{"Sunday", "0"}, {"Monday", "1"}, {"Tuesday", "2"}, {"Wednesday", "3"},
-		{"Thursday", "4"}, {"Friday", "5"}, {"Saturday", "6"},
-	}
 }

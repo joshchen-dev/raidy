@@ -58,12 +58,12 @@ export function Landing({
             See which nights your whole static can raid.
           </h1>
           <p className="mt-4 max-w-md text-muted-foreground">
-            Raidy posts a weekly availability vote to your Discord server. Members answer there; you set up the schedule
-            and confirm dates here.
+            Members mark the nights they can make here, and Raidy keeps a live summary posted in your Discord server.
+            The leader confirms dates in the same grid.
           </p>
           {error && <p className="mt-5 text-sm text-destructive">{error}</p>}
           <Button asChild size="lg" className="mt-8">
-            <a href="/api/auth/login">Sign in with Discord</a>
+            <a href={loginURL()}>Sign in with Discord</a>
           </Button>
         </section>
         <figure aria-label="Example availability grid">
@@ -81,4 +81,10 @@ export function Landing({
       </main>
     </div>
   );
+}
+
+/** Signing in from a team link in Discord returns to that team. */
+function loginURL() {
+  const team = new URLSearchParams(location.search).get("team");
+  return team && /^\d+$/.test(team) ? `/api/auth/login?team=${team}` : "/api/auth/login";
 }
