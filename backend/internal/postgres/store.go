@@ -16,6 +16,9 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	ErrNotFound  = errors.New("not found")
 	ErrExpired   = errors.New("poll expired")
+	// ErrAlreadyPublished rejects a manual publish while a future period is
+	// already open, so repeated clicks cannot skip voting periods.
+	ErrAlreadyPublished = errors.New("the next period is already published; use Republish to restore its message")
 )
 
 type Store struct{ pool *pgxpool.Pool }
@@ -396,6 +399,22 @@ func (s *Store) PublishNext(ctx context.Context, teamID int64, force bool, now t
 	}
 	if !force && (!schedule.Enabled || schedule.NextPublishAt.After(now)) {
 		return team.Poll{}, false, tx.Commit(ctx)
+	}
+	if force {
+		loc, err := time.LoadLocation(schedule.Timezone)
+		if err != nil {
+			return team.Poll{}, false, err
+		}
+		var futureOpen bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS(SELECT 1 FROM schedule_polls WHERE team_id=$1 AND closed_at IS NULL AND period_start > $2::date)`,
+			teamID, now.In(loc).Format("2006-01-02"),
+		).Scan(&futureOpen); err != nil {
+			return team.Poll{}, false, err
+		}
+		if futureOpen {
+			return team.Poll{}, false, ErrAlreadyPublished
+		}
 	}
 	rows, err := tx.Query(ctx, `SELECT weekday FROM schedule_weekdays WHERE team_id=$1 ORDER BY weekday`, teamID)
 	if err != nil {

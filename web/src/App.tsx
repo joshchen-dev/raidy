@@ -375,6 +375,7 @@ function SchedulePanel({ team, revision, onChanged, onError }: { team: Team; rev
   const [channelsRevision, setChannelsRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pending, setPending] = useState<"publish" | "republish" | "enabled" | null>(null);
 
   useEffect(() => {
     if (!team.isLeader) { setLoading(false); return; }
@@ -441,13 +442,17 @@ function SchedulePanel({ team, revision, onChanged, onError }: { team: Team; rev
   }
 
   async function setEnabled(enabled: boolean) {
+    setPending("enabled");
     try { await api(`/api/teams/${team.id}/schedule/enabled`, { method: "POST", body: JSON.stringify({ enabled }) }); setSaved(saved ? { ...saved, enabled } : saved); await onChanged(); }
     catch (reason) { onError(message(reason)); }
+    finally { setPending(null); }
   }
 
   async function action(name: "publish" | "republish") {
+    setPending(name);
     try { await api(`/api/teams/${team.id}/${name}`, { method: "POST" }); await onChanged(); }
     catch (reason) { onError(message(reason)); }
+    finally { setPending(null); }
   }
 
   if (!team.isLeader) return <><SectionTitle title="Schedule" detail="Only the team leader can edit the recurring schedule." /><Card><CardContent>Ask your team leader to update the timetable.</CardContent></Card></>;
@@ -455,7 +460,7 @@ function SchedulePanel({ team, revision, onChanged, onError }: { team: Team; rev
 
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-4"><SectionTitle title="Schedule" detail="Configure the next weekly or biweekly voting period." />{saved && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => action("publish")}>Publish next now</Button><Button variant="outline" onClick={() => action("republish")}>Republish latest</Button><Button variant="outline" onClick={() => setEnabled(!saved.enabled)}>{saved.enabled ? "Pause automation" : "Enable automation"}</Button></div>}</div>
+      <div className="flex flex-wrap items-start justify-between gap-4"><SectionTitle title="Schedule" detail="Configure the next weekly or biweekly voting period." />{saved && <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={pending !== null} onClick={() => action("publish")}>{pending === "publish" ? "Publishing…" : "Publish next now"}</Button><Button variant="outline" disabled={pending !== null} onClick={() => action("republish")}>{pending === "republish" ? "Republishing…" : "Republish latest"}</Button><Button variant="outline" disabled={pending !== null} onClick={() => setEnabled(!saved.enabled)}>{saved.enabled ? "Pause automation" : "Enable automation"}</Button></div>}</div>
       <form className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]" onSubmit={submit}>
         <Card><CardContent className="space-y-6">
           <div className="grid gap-5 sm:grid-cols-2">

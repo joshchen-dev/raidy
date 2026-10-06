@@ -173,6 +173,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusForbidden
 	case errors.Is(err, postgres.ErrNotFound):
 		status = http.StatusNotFound
+	case errors.Is(err, postgres.ErrAlreadyPublished):
+		status = http.StatusConflict
 	}
 	if status == http.StatusGatewayTimeout {
 		writeError(w, status, "Discord took too long to respond; try again")
