@@ -13,7 +13,8 @@ import (
 	"github.com/joshchen-dev/raidy/migrations"
 )
 
-func TestSchedulingLifecycle(t *testing.T) {
+func openTestStore(t *testing.T) (*Store, *pgxpool.Pool) {
+	t.Helper()
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
@@ -23,14 +24,52 @@ func TestSchedulingLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	if err := migrations.Up(ctx, databaseURL); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `TRUNCATE teams CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	store := &Store{pool: pool}
+	return &Store{pool: pool}, pool
+}
+
+func TestForcedPublishDoesNotSkipPeriods(t *testing.T) {
+	store, pool := openTestStore(t)
+	ctx := context.Background()
+	created, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "The Echo", "Asia/Tokyo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	location, _ := time.LoadLocation("Asia/Tokyo")
+	periodStart := time.Date(2026, 10, 12, 0, 0, 0, 0, location)
+	now := periodStart.Add(-5 * 24 * time.Hour)
+	if err := store.SaveSchedule(ctx, team.ScheduleDraft{
+		TeamID: created.ID, UserID: "leader", CadenceDays: 7, Weekdays: []time.Weekday{time.Wednesday},
+		StartMinutes: 21 * 60, EndMinutes: 23 * 60, FirstPeriodStart: periodStart,
+		FirstPublishAt: periodStart.Add(-3 * 24 * time.Hour), ChannelID: "channel",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := store.PublishNext(ctx, created.ID, true, now); err != nil || !created {
+		t.Fatalf("first forced PublishNext() created=%v err=%v", created, err)
+	}
+	if _, _, err := store.PublishNext(ctx, created.ID, true, now); !errors.Is(err, ErrAlreadyPublished) {
+		t.Fatalf("second forced PublishNext() error = %v, want ErrAlreadyPublished", err)
+	}
+	var polls int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schedule_polls WHERE team_id=$1`, created.ID).Scan(&polls); err != nil || polls != 1 {
+		t.Fatalf("poll count=%d err=%v, want 1", polls, err)
+	}
+	schedule, err := store.Schedule(ctx, created.ID)
+	if err != nil || schedule.NextPeriodStart.Format("2006-01-02") != "2026-10-19" {
+		t.Fatalf("next period=%v err=%v, want one cadence after the published period", schedule.NextPeriodStart, err)
+	}
+}
+
+func TestSchedulingLifecycle(t *testing.T) {
+	store, pool := openTestStore(t)
+	ctx := context.Background()
 
 	if _, err := store.CreateTeam(ctx, "guild", "Raid Night", "leader", "Too Big", "Asia/Tokyo", []string{"1", "2", "3", "4", "5", "6", "7", "8"}); err == nil {
 		t.Fatal("expected eight-member limit error")
