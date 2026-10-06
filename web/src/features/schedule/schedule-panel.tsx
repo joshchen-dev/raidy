@@ -219,7 +219,14 @@ export function SchedulePanel({
       />
       <form className="grid gap-x-12 lg:grid-cols-[minmax(0,1fr)_300px]" onSubmit={submit}>
         <div>
-          <Section title="When" description="One time slot, repeated on the days you pick.">
+          <Section
+            title="When"
+            description={
+              saved
+                ? "A new time or timezone also moves upcoming dates in open periods and keeps their votes. Day changes start with the next period."
+                : "One time slot, repeated on the days you pick."
+            }
+          >
             <fieldset>
               <Label asChild>
                 <legend>Raid days</legend>
