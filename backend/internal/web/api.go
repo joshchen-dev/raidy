@@ -522,28 +522,35 @@ func (h *Handler) republish(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) currentPoll(w http.ResponseWriter, r *http.Request) {
+type pollResponse struct {
+	ID          int64                `json:"id"`
+	PeriodStart string               `json:"periodStart"`
+	PeriodEnd   string               `json:"periodEnd"`
+	Timezone    string               `json:"timezone"`
+	Occurrences []occurrenceResponse `json:"occurrences"`
+}
+
+func (h *Handler) openPolls(w http.ResponseWriter, r *http.Request) {
 	current := sessionFrom(r.Context())
 	value, err := h.memberTeam(r.Context(), current, r.PathValue("teamID"))
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	view, err := h.store.LatestPoll(r.Context(), value.ID)
-	if errors.Is(err, postgres.ErrNotFound) {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
+	views, err := h.store.OpenPolls(r.Context(), value.ID)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	result := struct {
-		PeriodStart string               `json:"periodStart"`
-		PeriodEnd   string               `json:"periodEnd"`
-		Timezone    string               `json:"timezone"`
-		Occurrences []occurrenceResponse `json:"occurrences"`
-	}{PeriodStart: view.Poll.PeriodStart.Format("2006-01-02"), PeriodEnd: view.Poll.PeriodEnd.AddDate(0, 0, -1).Format("2006-01-02"), Timezone: view.Poll.Timezone}
+	result := make([]pollResponse, 0, len(views))
+	for _, view := range views {
+		result = append(result, pollJSON(view))
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func pollJSON(view team.PollView) pollResponse {
+	result := pollResponse{ID: view.Poll.ID, PeriodStart: view.Poll.PeriodStart.Format("2006-01-02"), PeriodEnd: view.Poll.PeriodEnd.AddDate(0, 0, -1).Format("2006-01-02"), Timezone: view.Poll.Timezone, Occurrences: []occurrenceResponse{}}
 	for _, occurrence := range view.Poll.Occurrences {
 		available, unavailable := 0, 0
 		votes := make([]voteResponse, 0, len(view.Members))
@@ -563,7 +570,7 @@ func (h *Handler) currentPoll(w http.ResponseWriter, r *http.Request) {
 		}
 		result.Occurrences = append(result.Occurrences, occurrenceResponse{ID: occurrence.ID, StartsAt: occurrence.StartsAt, EndsAt: occurrence.EndsAt, Status: occurrence.Status, Available: available, Unavailable: unavailable, Pending: len(view.Members) - available - unavailable, Votes: votes})
 	}
-	writeJSON(w, http.StatusOK, result)
+	return result
 }
 
 func (h *Handler) memberTeam(ctx context.Context, current session, rawID string) (team.Team, error) {

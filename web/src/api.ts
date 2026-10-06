@@ -61,6 +61,7 @@ export type Schedule = {
   occurrences?: Occurrence[];
 };
 export type Poll = {
+  id: number;
   periodStart: string;
   periodEnd: string;
   timezone: string;

@@ -90,7 +90,7 @@ func (h *Handler) Routes(health http.Handler) http.Handler {
 	api.HandleFunc("POST /api/teams/{teamID}/schedule/enabled", h.setScheduleEnabled)
 	api.HandleFunc("POST /api/teams/{teamID}/publish", h.publish)
 	api.HandleFunc("POST /api/teams/{teamID}/republish", h.republish)
-	api.HandleFunc("GET /api/teams/{teamID}/poll", h.currentPoll)
+	api.HandleFunc("GET /api/teams/{teamID}/polls", h.openPolls)
 	root.Handle("/api/", h.requireSession(api))
 	root.HandleFunc("/", h.serveApp)
 	return root
