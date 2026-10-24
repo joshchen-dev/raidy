@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/paths";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -8,6 +10,11 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T | null> {
+  if (isDemo) {
+    // The demo runs entirely in the browser against sample data.
+    const { demoApi } = await import("./demo/backend");
+    return (await demoApi(path, options)) as T | null;
+  }
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
   let response: Response;
