@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = 5179;
 const demoPort = 5180;
+const productPort = 5184;
 
 export default defineConfig({
   testDir: "e2e",
@@ -15,14 +16,15 @@ export default defineConfig({
     launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined }
   },
   projects: [
-    { name: "desktop", testIgnore: "demo.spec.ts", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", testIgnore: "demo.spec.ts", use: { ...devices["Pixel 7"] } },
+    { name: "desktop", testIgnore: /(demo|product).spec.ts/, use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile", testIgnore: /(demo|product).spec.ts/, use: { ...devices["Pixel 7"] } },
     // The demo build runs the real app against in-browser sample data.
     {
       name: "demo",
       testMatch: "demo.spec.ts",
       use: { ...devices["Desktop Chrome"], baseURL: `http://127.0.0.1:${demoPort}` }
-    }
+    },
+    { name: "product", testMatch: "product.spec.ts", use: { baseURL: `http://127.0.0.1:${productPort}` } }
   ],
   webServer: [
     {
@@ -33,6 +35,11 @@ export default defineConfig({
     {
       command: `npx vite --mode demo --base /demo/ --host 127.0.0.1 --port ${demoPort} --strictPort`,
       url: `http://127.0.0.1:${demoPort}/demo/`,
+      reuseExistingServer: !process.env.CI
+    },
+    {
+      command: `npx vite --config vite.product.config.ts --host 127.0.0.1 --port ${productPort} --strictPort`,
+      url: `http://127.0.0.1:${productPort}/`,
       reuseExistingServer: !process.env.CI
     }
   ]

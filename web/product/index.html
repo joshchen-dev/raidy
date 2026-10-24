@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fafaf9" />
+    <title>Raidy: raid nights for Discord statics</title>
+    <meta
+      name="description"
+      content="Raidy finds the nights your whole raid team can make. Members vote on the web; one Discord post stays up to date."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Raidy" />
+    <meta property="og:description" content="Find the nights your whole static can raid. Try the live demo." />
+    <meta property="og:image" content="/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      (() => {
+        const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", dark);
+        document.querySelector('meta[name="theme-color"]').content = dark ? "#121110" : "#fafaf9";
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>
