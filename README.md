@@ -4,7 +4,7 @@
 
 Raidy is a raid scheduling project for Discord statics: the web console is where everyone plans, and Discord carries the announcements. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
-**Status:** `v0.0.18` is an early development snapshot.
+**Status:** `v0.0.19` is an early development snapshot.
 
 ```text
 backend/     Go service, Discord interactions, web API, PostgreSQL migrations
@@ -60,8 +60,8 @@ The Go process applies pinned, embedded Goose migrations before opening the appl
 `web/product/` is the public product page, and the demo is the real app running against in-browser sample data. Neither needs the Go backend. From `web/`:
 
 ```sh
-npm run dev:product     # product page with live reload
-npm run dev:demo        # demo at /demo/ with live reload
+npm run dev:product     # product page and demo together, with live reload
+npm run dev:demo        # the demo alone, at /demo/
 npm run screenshots     # capture the app screenshots the page shows
 npm run build:pages     # build both into dist-pages/
 npm run preview:pages   # serve dist-pages/ as GitHub Pages does

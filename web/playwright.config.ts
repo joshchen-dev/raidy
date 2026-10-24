@@ -38,7 +38,8 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI
     },
     {
-      command: `npx vite --config vite.product.config.ts --host 127.0.0.1 --port ${productPort} --strictPort`,
+      // The same command as `npm run dev:product`: the page plus the demo at /demo/.
+      command: `node scripts/dev-site.mjs --host 127.0.0.1 --port ${productPort} --strictPort`,
       url: `http://127.0.0.1:${productPort}/`,
       reuseExistingServer: !process.env.CI
     }
