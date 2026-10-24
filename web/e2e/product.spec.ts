@@ -42,3 +42,17 @@ test("the page never scrolls sideways on a phone", async ({ browser }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("the theme switch overrides the system and carries over to the demo", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  const html = page.locator("html");
+  await expect(html).toHaveClass(/dark/);
+  await page.getByRole("radio", { name: "Light theme" }).click();
+  await expect(html).not.toHaveClass(/dark/);
+  await page.reload();
+  await expect(html).not.toHaveClass(/dark/);
+  await page.getByRole("link", { name: "Try the demo" }).click();
+  await expect(page.getByRole("table", { name: /availability/i })).toBeVisible({ timeout: 30_000 });
+  await expect(html).not.toHaveClass(/dark/);
+});

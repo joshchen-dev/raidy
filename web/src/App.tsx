@@ -11,7 +11,7 @@ import { SchedulePanel } from "@/features/schedule/schedule-panel";
 import { TeamPanel } from "@/features/team/team-panel";
 import { message } from "@/lib/format";
 import { isDemo, productURL, teamURL } from "@/lib/paths";
-import { applyTheme, type Theme, type ThemePreference } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 type Tab = "overview" | "schedule" | "team";
@@ -33,11 +33,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
-  const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
-    const saved = document.documentElement.dataset.themePreference;
-    return saved === "light" || saved === "dark" ? saved : "system";
-  });
-  const [resolvedTheme, setResolvedTheme] = useState<Theme>("light");
+  const { preference: themePreference, resolved: resolvedTheme, choose: chooseTheme } = useTheme();
 
   async function loadData(preferred?: number) {
     const [nextTeams, nextGuilds] = await Promise.all([api<Team[]>("/api/teams"), api<Guild[]>("/api/guilds")]);
@@ -68,18 +64,6 @@ export default function App() {
     })();
   }, []);
 
-  useEffect(() => {
-    const media = matchMedia("(prefers-color-scheme: dark)");
-    const update = () => {
-      const theme = themePreference === "system" ? (media.matches ? "dark" : "light") : themePreference;
-      applyTheme(theme);
-      setResolvedTheme(theme);
-    };
-    update();
-    if (themePreference === "system") media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, [themePreference]);
-
   const selected = teams.find((team) => team.id === teamID) ?? null;
 
   function selectTeam(id: number) {
@@ -98,16 +82,6 @@ export default function App() {
   async function logout() {
     await api("/api/auth/logout", { method: "POST" });
     location.assign(isDemo ? productURL : "/");
-  }
-
-  function chooseTheme(next: ThemePreference) {
-    document.documentElement.dataset.themePreference = next;
-    try {
-      localStorage.setItem("raidy-theme", next);
-    } catch {
-      /* Theme still applies for this page. */
-    }
-    setThemePreference(next);
   }
 
   const toaster = <Toaster theme={resolvedTheme} position="bottom-right" toastOptions={{ className: "font-sans" }} />;
