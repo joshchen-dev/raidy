@@ -1,6 +1,9 @@
 import { CalendarClock, CalendarSync, Globe, MessageSquareText, MousePointerClick, ShieldCheck } from "lucide-react";
 import { Wordmark } from "@/components/common";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/user-menu";
+import { type Theme, useTheme } from "@/lib/theme";
 import { HeroDemo } from "./hero-demo";
 
 const github = "https://github.com/joshchen-dev/raidy";
@@ -64,6 +67,7 @@ const questions = [
 ];
 
 export function ProductPage() {
+  const theme = useTheme();
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
@@ -81,9 +85,14 @@ export function ProductPage() {
             FAQ
           </a>
         </nav>
-        <Button asChild size="sm" className="ml-auto">
-          <a href="demo/">Try the demo</a>
-        </Button>
+        <div className="ml-auto flex items-center gap-3">
+          <div className="hidden sm:block">
+            <ThemeToggle value={theme.preference} onChange={theme.choose} />
+          </div>
+          <Button asChild size="sm">
+            <a href="demo/">Try the demo</a>
+          </Button>
+        </div>
       </header>
 
       <main>
@@ -145,8 +154,12 @@ export function ProductPage() {
               Inside the app
             </h2>
             <div className="mt-12 grid items-end gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-              <Screen name="schedule" alt="The schedule editor with raid days, times and a preview of the first week" />
-              <Screen name="mobile" alt="The availability grid on a phone" narrow />
+              <Screen
+                theme={theme.resolved}
+                name="schedule"
+                alt="The schedule editor with raid days, times and a preview of the first week"
+              />
+              <Screen theme={theme.resolved} name="mobile" alt="The availability grid on a phone" narrow />
             </div>
           </div>
         </section>
@@ -194,6 +207,9 @@ export function ProductPage() {
       </main>
 
       <footer className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-8 text-sm text-muted-foreground sm:px-6">
+        <div className="w-full sm:hidden">
+          <ThemeToggle value={theme.preference} onChange={theme.choose} />
+        </div>
         <Wordmark />
         <a className="hover:text-foreground" href={github}>
           GitHub
@@ -206,17 +222,17 @@ export function ProductPage() {
   );
 }
 
-/** A screenshot of the real app, in the viewer's color scheme. */
-function Screen({ name, alt, narrow = false }: { name: string; alt: string; narrow?: boolean }) {
+/** A screenshot of the real app, in the page's current theme. */
+function Screen({ theme, name, alt, narrow = false }: { theme: Theme; name: string; alt: string; narrow?: boolean }) {
   return (
-    <picture className={narrow ? "mx-auto block w-full max-w-[280px]" : "block"}>
-      <source srcSet={`screens/${name}-dark.png`} media="(prefers-color-scheme: dark)" />
-      <img
-        src={`screens/${name}-light.png`}
-        alt={alt}
-        loading="lazy"
-        className="w-full rounded-lg border bg-card shadow-[0_24px_48px_-24px_rgb(28_25_23/0.25)]"
-      />
-    </picture>
+    <img
+      src={`screens/${name}-${theme}.png`}
+      alt={alt}
+      loading="lazy"
+      className={cn(
+        "w-full rounded-lg border bg-card shadow-[0_24px_48px_-24px_rgb(28_25_23/0.25)]",
+        narrow && "mx-auto max-w-[280px]"
+      )}
+    />
   );
 }
