@@ -4,7 +4,7 @@
 
 Raidy is a raid scheduling project for Discord statics: the web console is where everyone plans, and Discord carries the announcements. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
-**Status:** `v0.0.17` is an early development snapshot.
+**Status:** `v0.0.18` is an early development snapshot.
 
 ```text
 backend/     Go service, Discord interactions, web API, PostgreSQL migrations
@@ -54,6 +54,10 @@ Set `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, and `DISCORD_CLIENT_SECRET`, and set `
 The Vite development server opens at `http://localhost:5173` and proxies API calls to the Go process. For a production-style run, build `web/`, set `WEB_DIST_DIR` to its `dist` directory, and set `APP_BASE_URL` to the public origin. The Go process then serves both the API and static assets.
 
 The Go process applies pinned, embedded Goose migrations before opening the application store. Existing local databases are upgraded in place.
+
+## Product page and demo
+
+`web/product/` is the public product page, and `npm run build:demo` builds the real app against in-browser sample data. `npm run screenshots` captures the app screenshots the page shows, and `npm run build:pages` builds both into `web/dist-pages`. The Pages workflow deploys that on every merge to `main`.
 
 ## Run on local Kubernetes
 

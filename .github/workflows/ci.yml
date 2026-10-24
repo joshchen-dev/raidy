@@ -80,6 +80,9 @@ jobs:
       - name: Build web console
         working-directory: web
         run: npm run build
+      - name: Build product page and demo
+        working-directory: web
+        run: npm run build:pages
       - name: Install Playwright browser
         working-directory: web
         run: npx playwright install --with-deps chromium

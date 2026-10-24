@@ -1,0 +1,4 @@
+@import "../src/styles.css";
+
+/* The product page's root is product/, so point Tailwind at the shared sources. */
+@source "../src";
