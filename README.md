@@ -57,7 +57,17 @@ The Go process applies pinned, embedded Goose migrations before opening the appl
 
 ## Product page and demo
 
-`web/product/` is the public product page, and `npm run build:demo` builds the real app against in-browser sample data. `npm run screenshots` captures the app screenshots the page shows, and `npm run build:pages` builds both into `web/dist-pages`. The Pages workflow deploys that on every merge to `main`.
+`web/product/` is the public product page, and the demo is the real app running against in-browser sample data. Neither needs the Go backend. From `web/`:
+
+```sh
+npm run dev:product     # product page with live reload
+npm run dev:demo        # demo at /demo/ with live reload
+npm run screenshots     # capture the app screenshots the page shows
+npm run build:pages     # build both into dist-pages/
+npm run preview:pages   # serve dist-pages/ as GitHub Pages does
+```
+
+The Pages workflow deploys `dist-pages` on every merge to `main`. `npm run dev` is the full app and needs the Go process from the steps above.
 
 ## Run on local Kubernetes
 

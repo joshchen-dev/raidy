@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:product": "vite --config vite.product.config.ts",
+    "dev:demo": "vite --mode demo --base /demo/",
     "build": "tsc -b && vite build",
     "check": "tsc -b --pretty false",
     "format": "prettier --write .",
@@ -12,7 +14,8 @@
     "test:e2e": "playwright test",
     "build:demo": "tsc -b && vite build --mode demo --base /demo/ --outDir dist-demo",
     "screenshots": "playwright test --config playwright.screenshots.config.ts",
-    "build:pages": "rm -rf dist-pages && tsc -b && vite build --config vite.product.config.ts && vite build --mode demo --base /demo/ --outDir dist-pages/demo"
+    "build:pages": "rm -rf dist-pages && tsc -b && vite build --config vite.product.config.ts && vite build --mode demo --base /demo/ --outDir dist-pages/demo",
+    "preview:pages": "vite preview --config vite.product.config.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
