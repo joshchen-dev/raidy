@@ -67,7 +67,7 @@ export function ProductPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
-        <a href="/" aria-label="Raidy home">
+        <a href="./" aria-label="Raidy home">
           <Wordmark className="text-xl" />
         </a>
         <nav className="hidden gap-6 text-sm text-muted-foreground sm:flex" aria-label="Sections">

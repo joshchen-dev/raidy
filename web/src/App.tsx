@@ -10,7 +10,7 @@ import { Overview } from "@/features/overview/overview";
 import { SchedulePanel } from "@/features/schedule/schedule-panel";
 import { TeamPanel } from "@/features/team/team-panel";
 import { message } from "@/lib/format";
-import { isDemo, teamURL } from "@/lib/paths";
+import { isDemo, productURL, teamURL } from "@/lib/paths";
 import { applyTheme, type Theme, type ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -97,7 +97,7 @@ export default function App() {
 
   async function logout() {
     await api("/api/auth/logout", { method: "POST" });
-    location.assign("/");
+    location.assign(isDemo ? productURL : "/");
   }
 
   function chooseTheme(next: ThemePreference) {
@@ -232,7 +232,7 @@ function DemoBanner() {
           <span className="font-medium">Demo</span>
           <span className="text-muted-foreground"> · Sample data. Changes reset when you reload.</span>
         </span>
-        <a href="/" className="font-medium text-primary underline-offset-4 hover:underline">
+        <a href={productURL} className="font-medium text-primary underline-offset-4 hover:underline">
           About Raidy
         </a>
       </div>
