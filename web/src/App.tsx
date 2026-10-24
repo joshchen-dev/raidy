@@ -10,6 +10,7 @@ import { Overview } from "@/features/overview/overview";
 import { SchedulePanel } from "@/features/schedule/schedule-panel";
 import { TeamPanel } from "@/features/team/team-panel";
 import { message } from "@/lib/format";
+import { isDemo, teamURL } from "@/lib/paths";
 import { applyTheme, type Theme, type ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +48,7 @@ export default function App() {
     const wanted = preferred || teamID || fromURL;
     const selected = values.find((team) => team.id === wanted)?.id ?? values[0]?.id ?? null;
     setTeamID(selected);
-    if (selected) history.replaceState(null, "", `/app?team=${selected}`);
+    if (selected) history.replaceState(null, "", teamURL(selected));
   }
 
   useEffect(() => {
@@ -85,7 +86,7 @@ export default function App() {
     setTeamID(id);
     setCreating(false);
     setTab("overview");
-    history.replaceState(null, "", `/app?team=${id}`);
+    history.replaceState(null, "", teamURL(id));
   }
 
   async function changed(id?: number) {
@@ -122,6 +123,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
+      {isDemo && <DemoBanner />}
       <header className="border-b bg-background">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-6">
           <Wordmark className="text-base" />
@@ -218,6 +220,22 @@ export default function App() {
         )}
       </main>
       {toaster}
+    </div>
+  );
+}
+
+function DemoBanner() {
+  return (
+    <div className="border-b bg-primary/10 text-sm" role="note">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 sm:px-6">
+        <span>
+          <span className="font-medium">Demo</span>
+          <span className="text-muted-foreground"> · Sample data. Changes reset when you reload.</span>
+        </span>
+        <a href="/" className="font-medium text-primary underline-offset-4 hover:underline">
+          About Raidy
+        </a>
+      </div>
     </div>
   );
 }
