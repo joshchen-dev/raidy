@@ -55,8 +55,6 @@ test("schedule edits show an unsaved-changes bar that can be discarded", async (
   await mockSignedInLeader(page);
   await page.goto("/app");
   await page.getByRole("button", { name: "Schedule" }).click();
-  // Saving a new time moves the open period too; the page must say so.
-  await expect(page.getByText(/moves upcoming dates in open periods/)).toBeVisible();
   await expect(page.getByText("You have unsaved changes")).toHaveCount(0);
   await page
     .getByRole("radio", { name: "Mon" })
@@ -85,7 +83,7 @@ test("schedule shows the saved destination and loads channels only on demand", a
   await page.goto("/app");
   await page.getByRole("button", { name: "Schedule" }).click();
   // Regression: saved names used to render as "Discord server" / "Saved channel".
-  await expect(page.getByText("Posts go to Scions.")).toBeVisible();
+  await expect(page.getByText("in Scions")).toBeVisible();
   await expect(page.getByText("#raid-schedule")).toBeVisible();
   await expect(page.getByText("Saved channel")).toHaveCount(0);
   expect(recorder.requests.some((request) => request.includes("/channels"))).toBe(false);

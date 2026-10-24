@@ -4,7 +4,7 @@
 
 Raidy is a raid scheduling project for Discord statics: the web console is where everyone plans, and Discord carries the announcements. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
-**Status:** `v0.0.16` is an early development snapshot.
+**Status:** `v0.0.17` is an early development snapshot.
 
 ```text
 backend/     Go service, Discord interactions, web API, PostgreSQL migrations

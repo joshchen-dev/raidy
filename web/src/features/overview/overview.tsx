@@ -113,12 +113,8 @@ export function Overview({
   if (!schedule) {
     return (
       <div className="max-w-lg">
-        <h1 className="text-xl font-semibold tracking-tight">No timetable yet</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {team.isLeader
-            ? "Choose the days and time your static raids. Raidy then opens voting and announces the dates in Discord before every period."
-            : "Your leader hasn't set up the recurring schedule yet."}
-        </p>
+        <h1 className="text-xl font-semibold tracking-tight">No schedule yet</h1>
+        {!team.isLeader && <p className="mt-2 text-sm text-muted-foreground">Your leader hasn't set one up.</p>}
         {team.isLeader && (
           <Button className="mt-6" onClick={onEditSchedule}>
             Set up schedule
@@ -130,8 +126,8 @@ export function Overview({
 
   const summary = `${describeSchedule(schedule)} · ${schedule.timezone}`;
   const nextPost = schedule.enabled
-    ? `Next timetable posts ${formatDateTime(schedule.nextPublishAt, browserTimezone())}`
-    : "Automatic posting is paused";
+    ? `Next post ${formatDateTime(schedule.nextPublishAt, browserTimezone())}`
+    : "Posting paused";
 
   if (!poll) {
     return (
@@ -177,10 +173,7 @@ export function Overview({
         }
       />
       {canVote && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {draft ? "Tap each date you can make, then save." : "Your answers are in the first row."}
-          </p>
+        <div className="mb-3 flex justify-end gap-3">
           {draft ? (
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" disabled={savingVotes} onClick={() => setDraft(null)}>
@@ -207,9 +200,6 @@ export function Overview({
         draft={draft}
         onToggle={toggle}
       />
-      {team.isLeader && !draft && (
-        <p className="mt-3 text-xs text-muted-foreground">Use ⋯ under a date to confirm, cancel, or reopen it.</p>
-      )}
     </>
   );
 }

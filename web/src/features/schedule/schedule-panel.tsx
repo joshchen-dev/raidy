@@ -185,8 +185,7 @@ export function SchedulePanel({
     }
   }
 
-  if (!team.isLeader)
-    return <PageHeader title="Schedule" detail="Only the team leader can change the recurring schedule." />;
+  if (!team.isLeader) return <PageHeader title="Schedule" detail="Only the leader can change it." />;
   if (loading) return <LoadingPanel />;
 
   const dirty = !saved || JSON.stringify(schedulePayload(form)) !== JSON.stringify(schedulePayload(saved));
@@ -198,8 +197,8 @@ export function SchedulePanel({
         title="Schedule"
         detail={
           saved
-            ? `${describeSchedule(saved)} · ${saved.enabled ? "posting automatically" : "automatic posting paused"}`
-            : "Set the raid days once. Raidy opens voting and announces the dates in Discord before every period."
+            ? `${describeSchedule(saved)} · ${saved.enabled ? "posting automatically" : "posting paused"}`
+            : undefined
         }
         actions={
           saved && (
@@ -219,14 +218,7 @@ export function SchedulePanel({
       />
       <form className="grid gap-x-12 lg:grid-cols-[minmax(0,1fr)_300px]" onSubmit={submit}>
         <div>
-          <Section
-            title="When"
-            description={
-              saved
-                ? "A new time or timezone also moves upcoming dates in open periods and keeps their votes. Day changes start with the next period."
-                : "One time slot, repeated on the days you pick."
-            }
-          >
+          <Section title="When">
             <fieldset>
               <Label asChild>
                 <legend>Raid days</legend>
@@ -267,7 +259,7 @@ export function SchedulePanel({
             </Field>
           </Section>
 
-          <Section title="Voting" description="Each period opens its own availability vote, announced in Discord.">
+          <Section title="Voting">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Repeats">
                 <Select
@@ -306,7 +298,7 @@ export function SchedulePanel({
             </Field>
           </Section>
 
-          <Section title="Discord" description={`Posts go to ${team.guildName || "the team's server"}.`}>
+          <Section title="Discord">
             {choosingChannel ? (
               <Field label="Channel">
                 {channelsLoading ? (
@@ -341,7 +333,7 @@ export function SchedulePanel({
                   !channelsLoading &&
                   channels.length === 0 && (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      No channel allows Raidy to post. It needs View Channel, Send Messages, and Embed Links.
+                      Raidy can't post in any channel. It needs View Channel, Send Messages and Embed Links.
                     </p>
                   )
                 )}
@@ -356,6 +348,7 @@ export function SchedulePanel({
                 <div className="text-sm">
                   <span className="text-muted-foreground">Channel </span>
                   <span className="font-medium">{form.channelName ? `#${form.channelName}` : "Saved channel"}</span>
+                  {team.guildName && <span className="text-muted-foreground"> in {team.guildName}</span>}
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={() => setChoosingChannel(true)}>
                   Change
@@ -369,7 +362,7 @@ export function SchedulePanel({
 
         {dirty && (
           <div className="sticky bottom-4 z-20 mt-6 flex items-center justify-between gap-4 rounded-md border bg-popover px-4 py-3 shadow-sm lg:col-span-2">
-            <span className="text-sm">{saved ? "You have unsaved changes" : "Review the preview, then activate"}</span>
+            <span className="text-sm">{saved ? "You have unsaved changes" : "Not active yet"}</span>
             <div className="flex gap-2">
               {saved && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => setForm(saved)}>
@@ -393,7 +386,7 @@ export function SchedulePreview({ schedule, error }: { schedule: Schedule | null
       <h2 className="text-sm font-medium">First period</h2>
       {!schedule ? (
         <p className={`mt-3 text-sm ${error ? "text-destructive" : "text-muted-foreground"}`}>
-          {error || "Pick at least one day and a channel to preview dates."}
+          {error || "Pick days and a channel."}
         </p>
       ) : (
         <>
