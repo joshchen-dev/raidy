@@ -116,7 +116,7 @@ export function TeamPanel({
   if (team && !team.isLeader) {
     return (
       <>
-        <PageHeader title="Roster" detail="Only the team leader can change the roster." />
+        <PageHeader title="Roster" />
         <RosterList
           members={team.members.map((member) => ({ member, role: member.id === team.leaderId ? "Leader" : "Member" }))}
         />
@@ -132,12 +132,9 @@ export function TeamPanel({
 
   return (
     <>
-      <PageHeader
-        title={team ? "Roster" : "Create a team"}
-        detail={team ? team.guildName : "You become the leader and take the first of eight roster slots."}
-      />
+      <PageHeader title={team ? "Roster" : "Create a team"} detail={team?.guildName} />
       <form onSubmit={submit} className="max-w-4xl">
-        <Section title="Team" description={team ? undefined : "A team belongs to one Discord server."}>
+        <Section title="Team">
           {!team && (
             <Field label="Discord server">
               <Select
@@ -177,16 +174,13 @@ export function TeamPanel({
               <TimezoneCombobox value={timezone} onChange={setTimezone} />
             </Field>
           ) : (
-            <Field label="Timezone" hint="Change it on the Schedule tab so raid times are reviewed together.">
+            <Field label="Timezone" hint="Set on the Schedule tab.">
               <div className="flex h-10 items-center font-mono text-sm text-muted-foreground">{team.timezone}</div>
             </Field>
           )}
         </Section>
 
-        <Section
-          title="Members"
-          description={`${selected.length + 1} of ${rosterLimit}. Members are Discord accounts in this server.`}
-        >
+        <Section title="Members" description={`${selected.length + 1} of ${rosterLimit}`}>
           <RosterList
             members={[
               { member: leader, role: "Leader" },
@@ -222,7 +216,6 @@ export function TeamPanel({
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-destructive/30 p-4">
             <div>
               <div className="text-sm font-medium">Delete this team</div>
-              <p className="mt-0.5 text-sm text-muted-foreground">Removes the schedule and all timetable history.</p>
             </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>

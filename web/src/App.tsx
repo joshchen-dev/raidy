@@ -244,10 +244,7 @@ function NoServers({ inviteUrl }: { inviteUrl: string }) {
   return (
     <div className="max-w-lg">
       <h1 className="text-xl font-semibold tracking-tight">Raidy isn't in any of your servers</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Teams belong to a Discord server, and Raidy needs to be installed there before you can pick teammates or post
-        timetables. Add it to a server you manage, then reload this page.
-      </p>
+      <p className="mt-2 text-sm text-muted-foreground">Add it to a server you manage, then reload.</p>
       <div className="mt-6 flex gap-2">
         {inviteUrl && (
           <Button asChild>
