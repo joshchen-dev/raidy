@@ -1,0 +1,9 @@
+// Cloudflare deploys the product page and demo as static assets.
+// Build with `npm run build:pages`, then `npx wrangler deploy`.
+{
+  "name": "raidy",
+  "compatibility_date": "2026-11-25",
+  "assets": {
+    "directory": "./dist-pages"
+  }
+}

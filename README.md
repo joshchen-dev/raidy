@@ -69,7 +69,7 @@ npm run build:pages     # build both into dist-pages/
 npm run preview:pages   # serve dist-pages/ the way it is deployed
 ```
 
-Cloudflare Pages builds `web/` with `npm run build:pages` and serves `dist-pages` at [raidy.jhchen.dev](https://raidy.jhchen.dev) on every push to `main`, with a preview for other branches. `npm run dev` is the full app and needs the Go process from the steps above.
+Cloudflare builds `web/` with `npm run build:pages` and deploys `dist-pages` with `npx wrangler deploy` (configured in `web/wrangler.jsonc`) to [raidy.jhchen.dev](https://raidy.jhchen.dev) on every push to `main`, with a preview for other branches. `npm run dev` is the full app and needs the Go process from the steps above.
 
 ## Run on local Kubernetes
 
