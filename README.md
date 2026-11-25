@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/joshchen-dev/raidy/actions/workflows/ci.yml/badge.svg)](https://github.com/joshchen-dev/raidy/actions/workflows/ci.yml)
 
+**Live demo:** [raidy.jhchen.dev](https://raidy.jhchen.dev)
+
 Raidy is a raid scheduling project for Discord statics: the web console is where everyone plans, and Discord carries the announcements. One Go process runs the Discord bot, web API, scheduler, and production web assets, backed by PostgreSQL.
 
 **Status:** `v0.0.20` is an early development snapshot.
@@ -64,10 +66,10 @@ npm run dev:product     # product page and demo together, with live reload
 npm run dev:demo        # the demo alone, at /demo/
 npm run screenshots     # capture the app screenshots the page shows
 npm run build:pages     # build both into dist-pages/
-npm run preview:pages   # serve dist-pages/ as GitHub Pages does
+npm run preview:pages   # serve dist-pages/ the way it is deployed
 ```
 
-The Pages workflow deploys `dist-pages` on every merge to `main`. `npm run dev` is the full app and needs the Go process from the steps above.
+The Site workflow deploys `dist-pages` to Cloudflare Pages at [raidy.jhchen.dev](https://raidy.jhchen.dev) on every merge to `main`. `npm run dev` is the full app and needs the Go process from the steps above.
 
 ## Run on local Kubernetes
 

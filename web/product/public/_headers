@@ -1,0 +1,6 @@
+# Built files have content hashes in their names, so browsers can keep them
+# for good; pages themselves are revalidated, so a new deploy shows at once.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/demo/assets/*
+  Cache-Control: public, max-age=31536000, immutable
