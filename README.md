@@ -64,12 +64,12 @@ The Go process applies pinned, embedded Goose migrations before opening the appl
 ```sh
 npm run dev:product     # product page and demo together, with live reload
 npm run dev:demo        # the demo alone, at /demo/
-npm run screenshots     # capture the app screenshots the page shows
+npm run screenshots     # refresh the committed app screenshots after UI changes
 npm run build:pages     # build both into dist-pages/
 npm run preview:pages   # serve dist-pages/ the way it is deployed
 ```
 
-The Site workflow deploys `dist-pages` to Cloudflare Pages at [raidy.jhchen.dev](https://raidy.jhchen.dev) on every merge to `main`. `npm run dev` is the full app and needs the Go process from the steps above.
+Cloudflare Pages builds `web/` with `npm run build:pages` and serves `dist-pages` at [raidy.jhchen.dev](https://raidy.jhchen.dev) on every push to `main`, with a preview for other branches. `npm run dev` is the full app and needs the Go process from the steps above.
 
 ## Run on local Kubernetes
 
